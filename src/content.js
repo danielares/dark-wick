@@ -42,6 +42,7 @@
   // como ".../Arquivo.svg/250px-Arquivo.svg.png"). Imagens pequenas também
   // são tratadas como ícones pela varredura (ICON_MARK).
   const ICON_MARK = 'data-dw-icon';
+  const CURTAIN_MARK = 'data-dw-curtain';
   const MEDIA = [`img:not([src$=".svg"],[src*=".svg?"],[src*=".svg#"],[src^="data:image/svg"],[${ICON_MARK}])`, 'picture', 'video', 'embed', 'object', 'svg image', ...BG, ...EMBEDS].join(',');
   // Mídia dentro de mídia já revertida seria invertida duas vezes.
   const NESTED = ['picture img', ...BG.map((s) => `${s} :is(img,picture,video,embed,object,iframe,${BG.join(',')})`)].join(',');
@@ -67,6 +68,9 @@ ${NESTED}{filter:none!important}
 
   // Elementos na top layer (modais, popovers, tela cheia) não herdam o filtro
   // do <html>: modais/popovers recebem o mesmo filtro e a tela cheia fica original.
+  // Cortinas escuras de modal/menu ficam com a cor original (invertidas virariam
+  // um véu branco), e os filhos diretos recebem o filtro da página de novo, para
+  // o cartão do modal escurecer normalmente.
   const css = (s) => {
     const filter = `${REVERT} saturate(${SAT}) brightness(${s.brightness / 100}) contrast(${s.contrast / 100}) sepia(${s.sepia / 100}) grayscale(${s.grayscale / 100})`;
     return `@media screen{
@@ -75,6 +79,9 @@ html{filter:${filter}!important;scrollbar-color:#3b3b42 #141417!important}
 :where(body){scrollbar-color:auto}
 ${mediaRules(s)}
 dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${filter}!important}
+[${CURTAIN_MARK}]{filter:${mediaFilter(s)}!important}
+[${CURTAIN_MARK}]>:not(img,picture,video,embed,object,iframe){filter:${filter}!important}
+[${CURTAIN_MARK}]>:is(img,picture,video,embed,object,iframe){filter:none!important}
 ::backdrop{filter:none!important}
 }`;
   };
@@ -181,7 +188,29 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     return [0, 1, 2].map((i) => cs.reduce((sum, c) => sum + c[i], 0) / cs.length).concat(1);
   }
 
-  function pageLooksDark() {
+  // Fundo da página como um todo: o primeiro fundo opaco de um elemento da
+  // altura do documento (ou html/body). Um hero escuro no topo de uma página
+  // clara não conta. early: página pela metade, só html/body valem.
+  function pageBackground(early) {
+    if (!early) {
+      const tall = root.scrollHeight * 0.8;
+      for (const el of document.elementsFromPoint(innerWidth / 2, innerHeight / 2)) {
+        const r = el.getBoundingClientRect();
+        if (r.height < tall || el === root || el === document.body) continue;
+        const cs = getComputedStyle(el);
+        if (cs.position === 'fixed' && isCurtain(el)) continue;
+        const bg = parseColor(cs.backgroundColor);
+        if (bg[3] >= 0.5) return bg;
+      }
+    }
+    for (const el of [document.body, root]) {
+      const bg = parseColor(getComputedStyle(el).backgroundColor);
+      if (bg[3] >= 0.5) return bg;
+    }
+    return [255, 255, 255, 1];
+  }
+
+  function pageLooksDark(early) {
     const w = innerWidth;
     const h = innerHeight;
     let dark = 0;
@@ -192,7 +221,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       total++;
       if (luma(c) < 0.4) dark++;
     }
-    return total > 0 && dark / total >= 0.6;
+    return total > 0 && dark / total >= 0.6 && luma(pageBackground(early)) < 0.4;
   }
 
   // early: chamado durante o carregamento. Só pode concluir "escuro" (página
@@ -205,7 +234,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     if (sheet) sheet.disabled = true;
     let dark;
     try {
-      dark = pageLooksDark();
+      dark = pageLooksDark(early);
     } finally {
       if (sheet) sheet.disabled = false;
     }
@@ -236,6 +265,8 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   // Roda em requestIdleCallback, em fatias, e só com o filtro ativo.
 
   const BG_MIN = 48;
+  const COVER_MIN_W = 240; // foto/vídeo de fundo: tamanho mínimo
+  const COVER_MIN_H = 160;
   const ICON_MAX = 32; // <img> até este tamanho é ícone: inverte com o texto
   const KEEP_CHROMA = 0.4; // saturação mínima para contar como cor da marca
   const KEEP_DARK = 0.3; // luminância abaixo da qual o fundo já é escuro
@@ -261,14 +292,55 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     if (!r.width || !r.height) return void (eager && unsized.add(el));
     if (eager && (r.top >= innerHeight || r.bottom <= 0)) return false;
     if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
-    if (el.tagName === 'IMG') return void mark(el, ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX);
+    if (el.tagName === 'IMG' || el.tagName === 'VIDEO') {
+      if (el.tagName === 'IMG') mark(el, ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX);
+      if (r.width >= COVER_MIN_W && r.height >= COVER_MIN_H) markCover(el, r);
+      return;
+    }
     const cs = getComputedStyle(el);
     // Reavaliado a cada varredura: a cor de fundo pode mudar (aba ativa etc.).
-    mark(el, KEEP_MARK, keepsColor(cs));
+    // Cortinas de modal/menu não: levariam junto o cartão claro de dentro.
+    const curtain = cs.position === 'fixed' && isCurtain(el);
+    mark(el, KEEP_MARK, !curtain && keepsColor(cs));
+    mark(el, CURTAIN_MARK, curtain && isScrim(cs));
     if (el.hasAttribute(BG_MARK) || r.width < BG_MIN || r.height < BG_MIN) return;
     if (isPhoto(cs, r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
       mark(el, BG_MARK, true);
     }
+  }
+
+  // Foto/vídeo usado como fundo (hero com object-fit: cover ou absoluto atrás
+  // do texto): o maior ancestral do mesmo tamanho é revertido inteiro, para o
+  // texto por cima manter as cores originais (senão o branco vira preto).
+  function markCover(el, r) {
+    const cs = getComputedStyle(el);
+    if (cs.objectFit !== 'cover' && cs.position !== 'absolute' && cs.position !== 'fixed') return;
+    let host = null;
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const q = p.getBoundingClientRect();
+      // Só ancestrais do mesmo tamanho da mídia (nem maiores, nem achatados:
+      // filtro num wrapper de altura 0 some com o carrossel inteiro).
+      if (Math.abs(q.width - r.width) > r.width * 0.05 + 2 || Math.abs(q.height - r.height) > r.height * 0.05 + 2) break;
+      host = p;
+    }
+    if (!host || host.hasAttribute(BG_MARK) || !host.textContent.trim()) return;
+    if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return;
+    if (hasCard(host, r)) return;
+    mark(host, BG_MARK, true);
+  }
+
+  // Texto num cartão opaco grande sobre a foto (tela de login, modal): o cartão
+  // escurece normalmente e a foto se reverte sozinha, sem reverter o conjunto.
+  function hasCard(host, r) {
+    const area = r.width * r.height;
+    for (const el of host.querySelectorAll('*')) {
+      if (SKIP_TAGS.has(el.tagName)) continue;
+      const q = el.getBoundingClientRect();
+      const a = q.width * q.height;
+      if (a < area * 0.15 || a > area * 0.9) continue;
+      if (parseColor(getComputedStyle(el).backgroundColor)[3] >= 0.9) return true;
+    }
+    return false;
   }
 
   function mark(el, attr, on) {
@@ -289,6 +361,11 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     }
     const chroma = (Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2])) / 255;
     return chroma >= KEEP_CHROMA || luma(c) < KEEP_DARK;
+  }
+
+  function isScrim(cs) {
+    const c = parseColor(cs.backgroundColor);
+    return c[3] >= 0.1 && luma(c) < KEEP_DARK;
   }
 
   function isPhoto(cs, hostRect) {

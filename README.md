@@ -27,7 +27,9 @@ O Dark Wick faz o contrário:
 - **Mídia preservada:** imagens, vídeos, `<picture>`, embeds de vídeo, iframes de anúncio, fotos de fundo (inline ou do CSS, inclusive em `::before`/`::after`, se forem grandes) e imagens dentro de Shadow DOM aberto recebem o filtro inverso. Cards com texto sobre a foto são revertidos inteiros, ficando como no original.
 - **Identidade visual:** a varredura marca fundos de cor viva (cabeçalhos e botões da marca) ou já escuros e os mantém com as cores originais, junto com o logo e o texto dentro deles. Assim, o cabeçalho vermelho do g1 continua vermelho, com o logo branco. Imagens pequenas (até 32 px) e SVGs são tratados como ícones e escurecem com o texto.
 - **Fidelidade de cor:** o filtro corta valores fora de [0,1] entre etapas, o que desbotava cores vivas. A página recebe `saturate(1.6)` e as mídias dessaturam antes de reverter, ficando dentro da faixa. As mídias também desfazem o contraste reduzido, que é pensado para o texto. Em tons de pele, o erro em relação ao original caiu de ~7 para ~2 (de 255).
-- **Sites já escuros:** no modo **Auto**, a página é amostrada em 6 pontos (no DOMContentLoaded, no load, 2 s depois e em navegações de SPA). Se ela já for escura, o filtro sai. O resultado fica em cache por site, para evitar o flash claro na próxima visita.
+- **Foto ou vídeo de fundo:** quando uma imagem grande cobre a seção como fundo (hero com `object-fit: cover`), a seção inteira mantém as cores originais, para o texto por cima não inverter. Se o texto estiver num cartão opaco (tela de login, modal), só a foto é revertida.
+- **Cortinas de modal/menu:** o véu escuro atrás de modais e menus laterais mantém a cor original, e o conteúdo dentro dele escurece normalmente.
+- **Sites já escuros:** no modo **Auto**, a página é amostrada em 6 pontos (no DOMContentLoaded, no load, 2 s depois e em navegações de SPA). Se ela já for escura, e o fundo da página como um todo também (um topo escuro numa página clara não conta), o filtro sai. Durante o carregamento a verificação também roda, para sites pesados como o YouTube não piscarem claros. O resultado fica em cache por site, para evitar o flash claro na próxima visita.
 - **Top layer:** modais (`dialog`) e popovers recebem o mesmo filtro; elementos em tela cheia (vídeos) ficam com as cores originais.
 
 ## Limitações conhecidas (inerentes ao filtro)
@@ -37,6 +39,7 @@ O Dark Wick faz o contrário:
 - Ícones pequenos e texturas de fundo invertem junto com a página (de propósito). Elementos de fundo que só ganham a foto depois, por troca de classe, podem escapar da varredura.
 - `<canvas>` e Shadow DOM fechado são invertidos junto com a página. Para canvas, isso costuma ser bom (gráficos, Google Docs, mapas), mas é ruim em jogos.
 - Logos PNG pretos com fundo transparente continuam pretos.
+- Fotos de produto com fundo branco embutido na imagem continuam brancas.
 
 Se um site ficar ruim, use **Nunca** para ele, ou ajuste brilho/contraste com **Só neste site**.
 
