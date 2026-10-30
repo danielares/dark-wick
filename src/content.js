@@ -52,10 +52,16 @@
   // desfazem o contraste reduzido (pensado para o texto, não para fotos).
   const SAT = 1.6;
   const mediaFilter = (s) => `contrast(${100 / s.contrast}) saturate(${1 / SAT}) ${REVERT}`;
+  // Fundos marcados (cor viva/escuro) usam um reverso próprio: o inverso exato
+  // pede valores fora de [0,1] (luminância invertida + croma), que o corte do
+  // filtro desbota (amarelo vira creme). Sem desfazer o contraste e com menos
+  // dessaturação, tom e saturação sobrevivem melhor.
+  const KEEP_FILTER = `brightness(0.9) saturate(0.8) ${REVERT}`;
   // :where() zera a especificidade de MEDIA para que NESTED sempre vença
   // (sem isso, "img:not([src*=.svg])" ganhava de "picture img" e a imagem
   // dentro de <picture> era invertida duas vezes).
   const mediaRules = (s) => `:where(${MEDIA}){filter:${mediaFilter(s)}!important}
+[${KEEP_MARK}]:not([${BG_MARK}]){filter:${KEEP_FILTER}!important}
 ${NESTED}{filter:none!important}
 :fullscreen,:fullscreen *{filter:none!important}`;
 
@@ -189,7 +195,9 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     return total > 0 && dark / total >= 0.6;
   }
 
-  function detect() {
+  // early: chamado durante o carregamento. Só pode concluir "escuro" (página
+  // pela metade parece clara); a volta para "claro" espera o DOMContentLoaded.
+  function detect(early) {
     if (mode !== 'auto' || !document.body) return;
     // Desliga nossa folha durante a leitura para ver as cores originais.
     // É síncrono, então nada é pintado nesse intervalo.
@@ -201,7 +209,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     } finally {
       if (sheet) sheet.disabled = false;
     }
-    if (dark === nativeDark) return;
+    if (dark === nativeDark || (early && !dark)) return;
     nativeDark = dark;
     render();
     // Cache por site: na próxima visita evitamos o "flash" claro em sites escuros.
@@ -238,6 +246,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   let fresh = [];
   let writes = []; // marcas aplicadas em lote: ler tudo antes de escrever evita recalcular estilo a cada elemento
   let rafId = 0;
+  let earlyDetectAt = 0;
   const jobs = [];
   let idleId = 0;
   let scanning = false;
@@ -327,6 +336,12 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       else enqueue(n);
     }
     flush();
+    // Sites com JS pesado (YouTube) demoram segundos para o DOMContentLoaded:
+    // detecta o tema escuro já durante o carregamento, aproveitando o layout.
+    if (document.readyState === 'loading' && performance.now() - earlyDetectAt > 200) {
+      earlyDetectAt = performance.now();
+      detect(true);
+    }
   }
 
   function inspectNow(node, budget, done) {
