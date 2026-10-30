@@ -143,10 +143,18 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
 
   const luma = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
+  // Camada fixa que cobre quase a tela toda (cortina de menu lateral/modal):
+  // escurece a página só enquanto aberta, então não diz nada sobre o tema.
+  function isCurtain(el) {
+    const r = el.getBoundingClientRect();
+    return r.width >= innerWidth * 0.9 && r.height >= innerHeight * 0.9;
+  }
+
   function backgroundAt(x, y) {
     for (const el of document.elementsFromPoint(x, y)) {
       if (SKIP_TAGS.has(el.tagName)) return null;
       const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' && isCurtain(el)) continue;
       const bg = parseColor(cs.backgroundColor);
       if (bg[3] >= 0.5) return bg;
       const img = cs.backgroundImage;
