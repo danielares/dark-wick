@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="scene.css">
+<style>
+  .label { position: absolute; top: 58px; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; padding: 6px 12px; border-radius: 99px; }
+  .divider { position: absolute; top: 38px; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: linear-gradient(#ffc56b, #ff7a45); box-shadow: 0 0 20px rgba(255, 140, 60, .6); }
+  .knob { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; margin: -20px; border-radius: 50%; background: linear-gradient(135deg, #ffc56b, #ff7a45); box-shadow: 0 6px 20px rgba(0,0,0,.5); display: grid; place-items: center; color: #1a1206; font-weight: 800; font-size: 16px; }
+</style>
+</head>
+<body>
+  <div style="position:absolute;left:0;right:0;top:52px;text-align:center;display:grid;gap:12px">
+    <h1 style="font-size:40px">Antes e <em>depois</em></h1>
+    <p class="lead">Leitura confortável à noite, sem inverter fotos e vídeos.</p>
+  </div>
+
+  <div class="browser" style="left:80px;top:196px;width:1120px;height:570px">
+    <div class="bar"><span></span><span></span><span></span><div class="url">jornaldamanha.com.br</div></div>
+    <div class="viewport" style="height:532px">
+      <iframe src="demo-page.html" style="width:1244px;height:592px;transform:scale(.9)"></iframe>
+      <div style="position:absolute;inset:0;clip-path:inset(0 0 0 50%)">
+        <iframe src="demo-page.html?dark=1" style="width:1244px;height:592px;transform:scale(.9)"></iframe>
+      </div>
+      <span class="label" style="left:24px;top:auto;bottom:22px;background:#111;color:#fff">Antes</span>
+      <span class="label" style="right:24px;top:auto;bottom:22px;background:linear-gradient(135deg,#ffc56b,#ff7a45);color:#1a1206">Depois</span>
+    </div>
+    <div class="divider"></div>
+    <div class="knob" style="top:calc(50% + 19px)">⇆</div>
+  </div>
+</body>
+</html>

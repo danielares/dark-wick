@@ -45,6 +45,18 @@ src/background.js   registro dinâmico do content script, ícone por aba, atalho
 src/content.js      filtro + detecção de site escuro (roda em document_start)
 src/shared.js       defaults e helpers de storage (background + popup)
 src/popup/          interface
+tools/package.py    gera dist/dark-wick-<versão>.zip para a Chrome Web Store
+store/              textos da loja (LISTING.md), imagens (assets/) e as cenas que as geram (src/, build.py)
+PRIVACY.md          política de privacidade
 ```
+
+## Publicar na Chrome Web Store
+
+```
+python tools/package.py   # zip com só os arquivos da extensão, conferindo o manifest
+python store/build.py     # regenera as imagens da loja (precisa de Pillow e Chrome/Brave)
+```
+
+O passo a passo, com o texto de cada campo do painel, está em [store/LISTING.md](store/LISTING.md).
 
 Configurações ficam em `chrome.storage.sync` (`global` e `site:<host>`), e o cache de sites escuros em `chrome.storage.local`.

@@ -5,8 +5,13 @@
 // recebem o filtro inverso para manter as cores reais. Não há varredura de
 // folhas de estilo nem MutationObserver na árvore inteira.
 (() => {
-  if (window.__darkWick) return;
-  window.__darkWick = true;
+  // Após atualizar/recarregar a extensão, a cópia antiga fica órfã (sem acesso
+  // a chrome.*) mas o window do mundo isolado é o mesmo: só desistimos se a
+  // cópia existente ainda estiver viva; senão ela se desliga e assumimos.
+  const alive = () => !!chrome.runtime?.id;
+  if (window.__darkWick?.()) return;
+  window.__darkWick = alive;
+  document.getElementById('dark-wick')?.remove();
 
   const root = document.documentElement;
   if (!root || !/^(text\/(html|plain)|application\/xhtml\+xml)$/.test(document.contentType)) return;
@@ -167,9 +172,11 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
 
   // Frameworks que hidratam o <html> podem remover nosso <style>: só observamos
   // os filhos diretos do <html>, não a árvore inteira.
-  new MutationObserver(() => {
+  const keeper = new MutationObserver(() => {
+    if (!alive() || window.__darkWick !== alive) return keeper.disconnect();
     if (!style.isConnected) render();
-  }).observe(root, { childList: true });
+  });
+  keeper.observe(root, { childList: true });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => scheduleDetect(), { once: true });

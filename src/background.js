@@ -57,7 +57,7 @@ async function updateActiveIcons() {
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   await serial(syncRegistration);
-  if (reason === 'install') injectInto();
+  if (reason === 'install' || reason === 'update') injectInto();
   updateActiveIcons();
 });
 
