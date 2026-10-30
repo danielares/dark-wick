@@ -413,9 +413,10 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       else enqueue(n);
     }
     flush();
-    // Sites com JS pesado (YouTube) demoram segundos para o DOMContentLoaded:
-    // detecta o tema escuro já durante o carregamento, aproveitando o layout.
-    if (document.readyState === 'loading' && performance.now() - earlyDetectAt > 200) {
+    // Sites com JS pesado (YouTube) demoram segundos para o DOMContentLoaded, e
+    // o CSS pode chegar depois dele; o load espera todos os anúncios. Detecta o
+    // tema escuro durante todo o carregamento, aproveitando o layout.
+    if (document.readyState !== 'complete' && performance.now() - earlyDetectAt > 200) {
       earlyDetectAt = performance.now();
       detect(true);
     }
@@ -485,7 +486,10 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   load();
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => scheduleDetect(), { once: true });
+    document.addEventListener('DOMContentLoaded', () => {
+      scheduleDetect();
+      setTimeout(() => document.readyState !== 'complete' && detect(true), 1000); // CSS atrasado
+    }, { once: true });
   }
   if (document.readyState !== 'complete') {
     addEventListener('load', () => {
