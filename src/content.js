@@ -223,27 +223,44 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   const ICON_MAX = 32; // <img> até este tamanho é ícone: inverte com o texto
   const KEEP_CHROMA = 0.4; // saturação mínima para contar como cor da marca
   const KEEP_DARK = 0.3; // luminância abaixo da qual o fundo já é escuro
+  const EAGER_MAX = 1500; // elementos inspecionados por quadro no modo imediato
   const seenShadows = new WeakSet();
+  const unsized = new WeakSet(); // vistos sem tamanho no modo imediato
+  let eagerUntil = 0;
+  let fresh = [];
+  let writes = []; // marcas aplicadas em lote: ler tudo antes de escrever evita recalcular estilo a cada elemento
+  let rafId = 0;
   const jobs = [];
   let idleId = 0;
   let scanning = false;
 
-  function inspect(el) {
+  // Retorna false se, no modo imediato, o elemento estava fora da tela.
+  function inspect(el, eager) {
     if (!el.isConnected) return;
     const sr = el.shadowRoot;
     if (sr && !seenShadows.has(sr)) adoptShadow(sr);
     if (el === document.body) return;
     const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) return;
+    if (!r.width || !r.height) return void (eager && unsized.add(el));
+    if (eager && (r.top >= innerHeight || r.bottom <= 0)) return false;
     if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
-    if (el.tagName === 'IMG') return el.toggleAttribute(ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX);
+    if (el.tagName === 'IMG') return void mark(el, ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX);
     const cs = getComputedStyle(el);
     // Reavaliado a cada varredura: a cor de fundo pode mudar (aba ativa etc.).
-    el.toggleAttribute(KEEP_MARK, keepsColor(cs));
+    mark(el, KEEP_MARK, keepsColor(cs));
     if (el.hasAttribute(BG_MARK) || r.width < BG_MIN || r.height < BG_MIN) return;
     if (isPhoto(cs, r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
-      el.setAttribute(BG_MARK, '');
+      mark(el, BG_MARK, true);
     }
+  }
+
+  function mark(el, attr, on) {
+    if (el.hasAttribute(attr) !== on) writes.push(el, attr, on);
+  }
+
+  function flush() {
+    for (let i = 0; i < writes.length; i += 3) writes[i].toggleAttribute(writes[i + 1], writes[i + 2]);
+    writes = [];
   }
 
   function keepsColor(cs) {
@@ -276,10 +293,51 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     enqueue(sr);
   }
 
-  function enqueue(node) {
-    jobs.push({ list: node.querySelectorAll('*'), i: 0 });
-    if (node.nodeType === 1) jobs.push({ list: [node], i: 0 });
+  function queue(list) {
+    jobs.push({ list, i: 0 });
     if (!idleId) idleId = requestIdleCallback(work, { timeout: 1500 });
+  }
+
+  function enqueue(node) {
+    queue(node.querySelectorAll('*'));
+    if (node.nodeType === 1) queue([node]);
+  }
+
+  // Modo imediato (carregamento e logo após navegações): marca o que está na
+  // tela num requestAnimationFrame, logo antes do paint (reaproveitando o
+  // layout que o navegador faria de qualquer jeito). Evita o flash do
+  // logo/cabeçalho invertido. O resto fica para a varredura ociosa.
+  function frame() {
+    rafId = 0;
+    const nodes = fresh;
+    fresh = [];
+    const done = new WeakSet();
+    let budget = EAGER_MAX;
+    for (const n of nodes) {
+      if (done.has(n)) continue;
+      if (budget > 0 && scanning) budget -= inspectNow(n, budget, done);
+      else enqueue(n);
+    }
+    flush();
+  }
+
+  function inspectNow(node, budget, done) {
+    if (!node.isConnected) return 0;
+    for (let p = node.parentElement; p; p = p.parentElement) {
+      if (done.has(p)) return 0; // subárvore já coberta neste quadro
+      // Pais que estavam vazios (sem tamanho) podem ter crescido com este filho.
+      if (unsized.has(p)) { unsized.delete(p); inspect(p, true); }
+    }
+    done.add(node);
+    const list = node.querySelectorAll('*');
+    if (list.length >= budget || inspect(node, true) === false) return enqueue(node), 1; // abaixo da tela
+    const later = [];
+    for (const el of list) {
+      done.add(el);
+      if (inspect(el, true) === false) later.push(el);
+    }
+    if (later.length) queue(later);
+    return list.length + 1;
   }
 
   function work(deadline) {
@@ -291,6 +349,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       if (job.i >= job.list.length) jobs.pop();
       else inspect(job.list[job.i++]);
     }
+    flush();
     if (jobs.length) idleId = requestIdleCallback(work, { timeout: 1500 });
   }
 
@@ -299,8 +358,17 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     if (!alive() || window.__darkWick !== alive) return observer.disconnect();
     if (!style.isConnected) render();
     if (!scanning) return;
-    for (const m of mutations) for (const n of m.addedNodes) if (n.nodeType === 1) enqueue(n);
+    const eager = !document.hidden && (document.readyState !== 'complete' || performance.now() < eagerUntil);
+    for (const m of mutations) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (eager) fresh.push(n);
+        else enqueue(n);
+      }
+    }
+    if (fresh.length && !rafId) rafId = requestAnimationFrame(frame);
   });
+  const eagerFor = (ms) => (eagerUntil = performance.now() + ms);
 
   function setScanning(on) {
     scanning = on;
@@ -321,6 +389,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   }
   if (document.readyState !== 'complete') {
     addEventListener('load', () => {
+      eagerFor(3000); // conteúdo inserido por scripts logo após o load
       scheduleDetect();
       rescan();
       setTimeout(() => (scheduleDetect(), rescan()), 2000);
@@ -328,7 +397,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   } else {
     setTimeout(() => (scheduleDetect(), rescan()), 2000);
   }
-  window.navigation?.addEventListener('navigatesuccess', () => scheduleDetect(800));
+  window.navigation?.addEventListener('navigatesuccess', () => (eagerFor(3000), scheduleDetect(800)));
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && ('global' in changes || SITE_KEY in changes)) load();
