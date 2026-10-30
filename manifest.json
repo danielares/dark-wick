@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Dark Wick",
+  "version": "1.0.0",
+  "description": "Modo escuro leve para qualquer site — um único filtro na GPU, sem reescrever o CSS da página.",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Dark Wick",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "scripting", "favicon"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "commands": {
+    "toggle-site": {
+      "suggested_key": { "default": "Alt+Shift+D" },
+      "description": "Ligar/desligar o modo escuro no site atual"
+    }
+  }
+}

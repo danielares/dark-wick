@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26262d"/><stop offset="1" stop-color="#0d0d10"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="62%" r="50%">
+      <stop offset="0" stop-color="#ff9a48" stop-opacity=".5"/><stop offset="1" stop-color="#ff9a48" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="outer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#ff6b3d"/>
+    </linearGradient>
+    <linearGradient id="inner" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff4d6"/><stop offset="1" stop-color="#ffc56b"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <rect x="1" y="1" width="126" height="126" rx="29" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="2"/>
+  <circle cx="64" cy="74" r="50" fill="url(#glow)"/>
+  <g transform="translate(64 64) scale(.92) translate(-64 -60)">
+    <path fill="url(#outer)" d="M64 14C68 34 90 46 90 74C90 92 78 106 64 106C50 106 38 92 38 74C38 60 46 51 52 42C53 52 57 57 62 59C59 46 58 30 64 14Z"/>
+    <path fill="url(#inner)" d="M64 62C69 70 77 76 77 87C77 96 71 102 64 102C57 102 51 96 51 87C51 79 59 72 64 62Z"/>
+    <path d="M64 94V112" stroke="#2b1c14" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>

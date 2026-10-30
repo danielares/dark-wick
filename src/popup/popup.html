@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Dark Wick</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 128 128" aria-hidden="true">
+        <defs>
+          <radialGradient id="glow" cx="50%" cy="62%" r="50%">
+            <stop offset="0" stop-color="#ff9a48" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#ff9a48" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="outer" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffd27a"/>
+            <stop offset="1" stop-color="#ff6b3d"/>
+          </linearGradient>
+          <linearGradient id="inner" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff4d6"/>
+            <stop offset="1" stop-color="#ffc56b"/>
+          </linearGradient>
+        </defs>
+        <circle class="glow" cx="64" cy="76" r="52" fill="url(#glow)"/>
+        <g class="flame">
+          <path fill="url(#outer)" d="M64 14C68 34 90 46 90 74C90 92 78 106 64 106C50 106 38 92 38 74C38 60 46 51 52 42C53 52 57 57 62 59C59 46 58 30 64 14Z"/>
+          <path fill="url(#inner)" d="M64 62C69 70 77 76 77 87C77 96 71 102 64 102C57 102 51 96 51 87C51 79 59 72 64 62Z"/>
+        </g>
+        <path d="M64 94V112" stroke="#2b1c14" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>Dark Wick</h1>
+        <p>Modo escuro leve</p>
+      </div>
+    </div>
+    <label class="switch" title="Ligar/desligar em todos os sites">
+      <input type="checkbox" id="enabled" aria-label="Ativar em todos os sites">
+      <span aria-hidden="true"></span>
+    </label>
+  </header>
+
+  <section class="card site">
+    <div class="site-head">
+      <div class="favicon"><img id="favicon" alt=""></div>
+      <div class="site-info">
+        <strong id="host">—</strong>
+        <span class="status" id="status"><i></i><em>Verificando…</em></span>
+      </div>
+    </div>
+    <div class="segmented" id="mode" role="radiogroup" aria-label="Modo neste site">
+      <span class="seg-thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" data-mode="auto">Auto</button>
+      <button type="button" role="radio" data-mode="on">Sempre</button>
+      <button type="button" role="radio" data-mode="off">Nunca</button>
+    </div>
+    <p class="hint" id="hint"></p>
+  </section>
+
+  <section class="card tuning">
+    <div class="row-head">
+      <h2>Ajustes</h2>
+      <label class="check">
+        <input type="checkbox" id="custom">
+        <span class="box" aria-hidden="true"></span>
+        <span>Só neste site</span>
+      </label>
+    </div>
+
+    <label class="slider">
+      <span class="slider-label"><span>Brilho</span><output></output></span>
+      <input type="range" data-key="brightness" min="50" max="150" step="1">
+    </label>
+    <label class="slider">
+      <span class="slider-label"><span>Contraste</span><output></output></span>
+      <input type="range" data-key="contrast" min="50" max="150" step="1">
+    </label>
+    <label class="slider">
+      <span class="slider-label"><span>Calor</span><output></output></span>
+      <input type="range" data-key="sepia" min="0" max="100" step="1">
+    </label>
+    <label class="slider">
+      <span class="slider-label"><span>Tons de cinza</span><output></output></span>
+      <input type="range" data-key="grayscale" min="0" max="100" step="1">
+    </label>
+
+    <button type="button" class="ghost" id="reset">Restaurar padrão</button>
+  </section>
+
+  <footer>
+    <span id="shortcut"></span>
+    <span id="version"></span>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
