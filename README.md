@@ -21,17 +21,19 @@ O Dark Wick faz o contrário:
 |---|---|---|
 | Como escurece | Reescreve o CSS do site | Um único `filter` no `<html>`, executado pela GPU |
 | Leitura de CSS | Todas as folhas, inclusive cross-origin via fetch | Nenhuma |
-| Varredura do DOM | Árvore inteira, reescrevendo estilos | Só procura fotos em `background-image` e Shadow DOM, em tempo ocioso (`requestIdleCallback`), nos elementos novos e só com o filtro ativo |
+| Varredura do DOM | Árvore inteira, reescrevendo estilos | Só procura fotos em `background-image`, fundos de cor da marca e Shadow DOM, em tempo ocioso (`requestIdleCallback`), nos elementos novos e só com o filtro ativo |
 | Sites desligados | O script ainda roda | Nenhum código injetado (registro dinâmico com `excludeMatches`) |
 
 - **Mídia preservada:** imagens, vídeos, `<picture>`, embeds de vídeo, iframes de anúncio, fotos de fundo (inline ou do CSS, inclusive em `::before`/`::after`, se forem grandes) e imagens dentro de Shadow DOM aberto recebem o filtro inverso. Cards com texto sobre a foto são revertidos inteiros, ficando como no original.
+- **Identidade visual:** a varredura marca fundos de cor viva (cabeçalhos e botões da marca) ou já escuros e os mantém com as cores originais, junto com o logo e o texto dentro deles. Assim, o cabeçalho vermelho do g1 continua vermelho, com o logo branco. Imagens pequenas (até 32 px) e SVGs são tratados como ícones e escurecem com o texto.
 - **Fidelidade de cor:** o filtro corta valores fora de [0,1] entre etapas, o que desbotava cores vivas. A página recebe `saturate(1.6)` e as mídias dessaturam antes de reverter, ficando dentro da faixa. As mídias também desfazem o contraste reduzido, que é pensado para o texto. Em tons de pele, o erro em relação ao original caiu de ~7 para ~2 (de 255).
 - **Sites já escuros:** no modo **Auto**, a página é amostrada em 6 pontos (no DOMContentLoaded, no load, 2 s depois e em navegações de SPA). Se ela já for escura, o filtro sai. O resultado fica em cache por site, para evitar o flash claro na próxima visita.
 - **Top layer:** modais (`dialog`) e popovers recebem o mesmo filtro; elementos em tela cheia (vídeos) ficam com as cores originais.
 
 ## Limitações conhecidas (inerentes ao filtro)
 
-- Cores extremamente vivas (amarelo ou vermelho puros) ainda saem um pouco alteradas nas imagens. Fotos comuns ficam praticamente iguais.
+- Cores extremamente vivas (amarelo ou vermelho puros) ainda saem um pouco alteradas (por exemplo, um vermelho de marca fica um pouco mais escuro). Fotos comuns ficam praticamente iguais.
+- Textos coloridos (como manchetes vermelhas) viram um tom mais claro da mesma cor, de propósito, para ficarem legíveis no fundo escuro.
 - Ícones pequenos e texturas de fundo invertem junto com a página (de propósito). Elementos de fundo que só ganham a foto depois, por troca de classe, podem escapar da varredura.
 - `<canvas>` e Shadow DOM fechado são invertidos junto com a página. Para canvas, isso costuma ser bom (gráficos, Google Docs, mapas), mas é ruim em jogos.
 - Logos PNG pretos com fundo transparente continuam pretos.

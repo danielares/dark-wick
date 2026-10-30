@@ -32,11 +32,17 @@
     'youtube.com', 'youtube-nocookie.com', 'player.vimeo.com', 'dailymotion.com', 'player.twitch.tv', 'open.spotify.com',
     'googlesyndication.com', 'doubleclick.net', 'amazon-adsystem.com', 'adnxs.com', 'criteo', '2mdn.net',
   ].map((s) => `iframe[src*="${s}"]`).concat('iframe[id^="google_ads_iframe"]');
-  // Elementos grandes com foto em background-image (marcados pela varredura).
+  // Marcados pela varredura: elementos grandes com foto em background-image e
+  // elementos com fundo de cor viva ou escuro (identidade visual do site).
   const BG_MARK = 'data-dw-bg';
-  const BG = [...BG_INLINE, `[${BG_MARK}]`];
-  // SVGs via <img> costumam ser ícones/logos: deixamos inverter junto com o texto.
-  const MEDIA = ['img:not([src*=".svg"])', 'picture', 'video', 'embed', 'object', 'svg image', ...BG, ...EMBEDS].join(',');
+  const KEEP_MARK = 'data-dw-keep';
+  const BG = [...BG_INLINE, `[${BG_MARK}]`, `[${KEEP_MARK}]`];
+  // SVGs via <img> costumam ser ícones/logos: deixamos inverter junto com o
+  // texto. Só conta o arquivo .svg em si (a Wikipédia serve fotos e bandeiras
+  // como ".../Arquivo.svg/250px-Arquivo.svg.png"). Imagens pequenas também
+  // são tratadas como ícones pela varredura (ICON_MARK).
+  const ICON_MARK = 'data-dw-icon';
+  const MEDIA = [`img:not([src$=".svg"],[src*=".svg?"],[src*=".svg#"],[src^="data:image/svg"],[${ICON_MARK}])`, 'picture', 'video', 'embed', 'object', 'svg image', ...BG, ...EMBEDS].join(',');
   // Mídia dentro de mídia já revertida seria invertida duas vezes.
   const NESTED = ['picture img', ...BG.map((s) => `${s} :is(img,picture,video,embed,object,iframe,${BG.join(',')})`)].join(',');
 
@@ -146,14 +152,19 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       const img = cs.backgroundImage;
       if (img !== 'none') {
         if (img.includes('url(')) return null;
-        const stops = img.match(/rgba?\([^)]+\)/g);
-        if (stops) {
-          const cs2 = stops.map(parseColor);
-          return [0, 1, 2].map((i) => cs2.reduce((sum, c) => sum + c[i], 0) / cs2.length).concat(1);
-        }
+        const g = gradientColor(img);
+        if (g) return g;
       }
     }
     return [255, 255, 255, 1]; // canvas padrão do navegador
+  }
+
+  // Cor média de um gradiente (null se não houver cores legíveis).
+  function gradientColor(img) {
+    const stops = img.match(/rgba?\([^)]+\)/g);
+    if (!stops) return null;
+    const cs = stops.map(parseColor);
+    return [0, 1, 2].map((i) => cs.reduce((sum, c) => sum + c[i], 0) / cs.length).concat(1);
   }
 
   function pageLooksDark() {
@@ -197,16 +208,21 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     detectTimer = setTimeout(detect, delay);
   }
 
-  // ---------- fotos em background-image e Shadow DOM ----------
-  // Fundos definidos no CSS do site não são selecionáveis por CSS: marcamos os
-  // elementos grandes com foto de fundo, inclusive em ::before/::after (comum
-  // em cards com texto sobre a foto, como no g1). O elemento inteiro é
-  // revertido, então foto, degradê e texto por cima ficam como no original.
-  // Ícones/sprites (pequenos) e texturas repetidas ficam de fora e invertem
-  // junto com a página, como o texto.
+  // ---------- varredura: fotos de fundo, cores da marca e Shadow DOM ----------
+  // Fundos definidos no CSS do site não são selecionáveis por CSS, então
+  // marcamos elementos para ficarem com as cores originais (o elemento inteiro
+  // é revertido, incluindo texto e logo por cima):
+  // - fotos grandes em background-image, inclusive em ::before/::after (cards
+  //   com texto sobre a foto, como no g1);
+  // - fundos de cor viva (cabeçalhos e botões da marca) ou já escuros
+  //   (rodapés, barras de navegação). Só o que é claro é invertido.
+  // Ícones/sprites (pequenos) e texturas repetidas invertem junto com a página.
   // Roda em requestIdleCallback, em fatias, e só com o filtro ativo.
 
   const BG_MIN = 48;
+  const ICON_MAX = 32; // <img> até este tamanho é ícone: inverte com o texto
+  const KEEP_CHROMA = 0.4; // saturação mínima para contar como cor da marca
+  const KEEP_DARK = 0.3; // luminância abaixo da qual o fundo já é escuro
   const seenShadows = new WeakSet();
   const jobs = [];
   let idleId = 0;
@@ -216,13 +232,29 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     if (!el.isConnected) return;
     const sr = el.shadowRoot;
     if (sr && !seenShadows.has(sr)) adoptShadow(sr);
-    if (el.hasAttribute(BG_MARK) || el === document.body) return;
+    if (el === document.body) return;
     const r = el.getBoundingClientRect();
-    if (r.width < BG_MIN || r.height < BG_MIN) return;
+    if (!r.width || !r.height) return;
     if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
-    if (isPhoto(getComputedStyle(el), r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
+    if (el.tagName === 'IMG') return el.toggleAttribute(ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX);
+    const cs = getComputedStyle(el);
+    // Reavaliado a cada varredura: a cor de fundo pode mudar (aba ativa etc.).
+    el.toggleAttribute(KEEP_MARK, keepsColor(cs));
+    if (el.hasAttribute(BG_MARK) || r.width < BG_MIN || r.height < BG_MIN) return;
+    if (isPhoto(cs, r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
       el.setAttribute(BG_MARK, '');
     }
+  }
+
+  function keepsColor(cs) {
+    let c = parseColor(cs.backgroundColor);
+    if (c[3] < 0.5) {
+      const img = cs.backgroundImage;
+      c = img !== 'none' && !img.includes('url(') && gradientColor(img);
+      if (!c) return false;
+    }
+    const chroma = (Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2])) / 255;
+    return chroma >= KEEP_CHROMA || luma(c) < KEEP_DARK;
   }
 
   function isPhoto(cs, hostRect) {
