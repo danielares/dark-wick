@@ -92,7 +92,7 @@ Marque as três declarações:
 **URL da política de privacidade:**
 
 ```
-https://github.com/<seu-usuario>/dark-wick/blob/main/PRIVACY.md
+https://github.com/danielares/dark-wick/blob/master/PRIVACY.md
 ```
 
 (o repositório precisa ser **público** para o link abrir sem login)
