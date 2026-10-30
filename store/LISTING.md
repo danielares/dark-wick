@@ -48,7 +48,7 @@ PRIVACIDADE
 A Dark Wick não coleta nem envia nenhum dado. Ela não faz requisições de rede, não usa analytics e não exibe anúncios. Suas preferências ficam guardadas no próprio navegador.
 
 LIMITAÇÕES
-Como a extensão usa um filtro de cor, cores muito vivas em imagens podem ficar levemente suavizadas, e imagens de fundo definidas no CSS do site são escurecidas junto com a página. Se algum site não ficar bom, marque "Nunca" para ele.
+Como a extensão usa um filtro de cor, cores extremamente vivas em imagens (como amarelo ou vermelho puros) podem ficar levemente alteradas. Ícones pequenos e texturas de fundo são escurecidos junto com a página. Se algum site não ficar bom, marque "Nunca" para ele.
 ```
 
 **Categoria:** Acessibilidade

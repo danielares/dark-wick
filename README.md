@@ -21,17 +21,19 @@ O Dark Wick faz o contrário:
 |---|---|---|
 | Como escurece | Reescreve o CSS do site | Um único `filter` no `<html>`, executado pela GPU |
 | Leitura de CSS | Todas as folhas, inclusive cross-origin via fetch | Nenhuma |
-| Observação do DOM | Árvore inteira, contínua | Só os filhos diretos do `<html>` (para religar o `<style>` se um framework removê-lo) |
+| Varredura do DOM | Árvore inteira, reescrevendo estilos | Só procura fotos em `background-image` e Shadow DOM, em tempo ocioso (`requestIdleCallback`), nos elementos novos e só com o filtro ativo |
 | Sites desligados | O script ainda roda | Nenhum código injetado (registro dinâmico com `excludeMatches`) |
 
-- **Mídia preservada:** imagens, vídeos, `<picture>`, embeds de vídeo e fundos inline recebem o filtro inverso para manter as cores reais.
+- **Mídia preservada:** imagens, vídeos, `<picture>`, embeds de vídeo, fotos de fundo (inline ou do CSS, se o elemento for grande) e imagens dentro de Shadow DOM aberto recebem o filtro inverso.
+- **Fidelidade de cor:** o filtro corta valores fora de [0,1] entre etapas, o que desbotava cores vivas. A página recebe `saturate(1.6)` e as mídias dessaturam antes de reverter, ficando dentro da faixa. As mídias também desfazem o contraste reduzido, que é pensado para o texto. Em tons de pele, o erro em relação ao original caiu de ~7 para ~2 (de 255).
 - **Sites já escuros:** no modo **Auto**, a página é amostrada em 6 pontos (no DOMContentLoaded, no load, 2 s depois e em navegações de SPA). Se ela já for escura, o filtro sai. O resultado fica em cache por site, para evitar o flash claro na próxima visita.
 - **Top layer:** modais (`dialog`) e popovers recebem o mesmo filtro; elementos em tela cheia (vídeos) ficam com as cores originais.
 
 ## Limitações conhecidas (inerentes ao filtro)
 
-- Cores muito saturadas em imagens perdem um pouco de saturação: o `hue-rotate` corta valores fora da gama de cores. Fotos comuns quase não mudam.
-- Imagens de fundo definidas em CSS (não inline) e `<canvas>` são invertidas junto com a página. Para canvas, isso costuma ser bom (gráficos, Google Docs, mapas), mas é ruim em jogos.
+- Cores extremamente vivas (amarelo ou vermelho puros) ainda saem um pouco alteradas nas imagens. Fotos comuns ficam praticamente iguais.
+- Ícones pequenos e texturas de fundo invertem junto com a página (de propósito). Elementos de fundo que só ganham a foto depois, por troca de classe, podem escapar da varredura.
+- `<canvas>` e Shadow DOM fechado são invertidos junto com a página. Para canvas, isso costuma ser bom (gráficos, Google Docs, mapas), mas é ruim em jogos.
 - Logos PNG pretos com fundo transparente continuam pretos.
 
 Se um site ficar ruim, use **Nunca** para ele, ou ajuste brilho/contraste com **Só neste site**.

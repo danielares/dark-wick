@@ -2,8 +2,9 @@
 //
 // Em vez de ler e reescrever o CSS do site (o que torna o Dark Reader pesado),
 // escurecemos a página com UM filtro no <html>, composto pela GPU. Mídias
-// recebem o filtro inverso para manter as cores reais. Não há varredura de
-// folhas de estilo nem MutationObserver na árvore inteira.
+// recebem o filtro inverso para manter as cores reais. Não lemos folhas de
+// estilo; a única varredura do DOM (fotos em background-image e Shadow DOM)
+// roda em tempo ocioso, só nos elementos novos e só com o filtro ativo.
 (() => {
   // Após atualizar/recarregar a extensão, a cópia antiga fica órfã (sem acesso
   // a chrome.*) mas o window do mundo isolado é o mesmo: só desistimos se a
@@ -28,28 +29,43 @@
     .map((s) => `[style*="${s}"]`);
   const EMBEDS = ['youtube.com', 'youtube-nocookie.com', 'player.vimeo.com', 'dailymotion.com', 'player.twitch.tv', 'open.spotify.com']
     .map((s) => `iframe[src*="${s}"]`);
+  // Elementos grandes com foto em background-image (marcados pela varredura).
+  const BG_MARK = 'data-dw-bg';
+  const BG = [...BG_INLINE, `[${BG_MARK}]`];
   // SVGs via <img> costumam ser ícones/logos: deixamos inverter junto com o texto.
-  const MEDIA = ['img:not([src*=".svg"])', 'picture', 'video', 'embed', 'object', 'svg image', ...BG_INLINE, ...EMBEDS].join(',');
+  const MEDIA = ['img:not([src*=".svg"])', 'picture', 'video', 'embed', 'object', 'svg image', ...BG, ...EMBEDS].join(',');
   // Mídia dentro de mídia já revertida seria invertida duas vezes.
-  const NESTED = ['picture img', ...BG_INLINE.map((s) => `${s} :is(img,picture,video)`)].join(',');
+  const NESTED = ['picture img', ...BG.map((s) => `${s} :is(img,picture,video,embed,object,iframe,${BG.join(',')})`)].join(',');
+
+  // O filtro corta valores fora de [0,1] entre uma etapa e outra, o que
+  // desbota cores vivas nas mídias. A página recebe saturate(SAT) e as mídias
+  // dessaturam antes de reverter, ficando dentro da faixa; elas também
+  // desfazem o contraste reduzido (pensado para o texto, não para fotos).
+  const SAT = 1.6;
+  const mediaFilter = (s) => `contrast(${100 / s.contrast}) saturate(${1 / SAT}) ${REVERT}`;
+  const mediaRules = (s) => `${MEDIA}{filter:${mediaFilter(s)}!important}
+${NESTED}{filter:none!important}
+:fullscreen,:fullscreen *{filter:none!important}`;
 
   // Elementos na top layer (modais, popovers, tela cheia) não herdam o filtro
   // do <html>: modais/popovers recebem o mesmo filtro e a tela cheia fica original.
   const css = (s) => {
-    const filter = `${REVERT} brightness(${s.brightness / 100}) contrast(${s.contrast / 100}) sepia(${s.sepia / 100}) grayscale(${s.grayscale / 100})`;
+    const filter = `${REVERT} saturate(${SAT}) brightness(${s.brightness / 100}) contrast(${s.contrast / 100}) sepia(${s.sepia / 100}) grayscale(${s.grayscale / 100})`;
     return `@media screen{
 html{filter:${filter}!important;scrollbar-color:#3b3b42 #141417!important}
 :where(html){background-color:#fff}
 :where(body){scrollbar-color:auto}
-${MEDIA}{filter:${REVERT}!important}
-${NESTED}{filter:none!important}
+${mediaRules(s)}
 dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${filter}!important}
-:fullscreen,:fullscreen *,::backdrop{filter:none!important}
+::backdrop{filter:none!important}
 }`;
   };
 
   const style = document.createElement('style');
   style.id = 'dark-wick';
+  // Folhas de estilo da página não alcançam Shadow DOM: cada shadow root
+  // aberto recebe um <style> só com as regras de mídia.
+  const shadowStyles = new Set();
 
   let settings = { ...DEFAULTS };
   let mode = 'auto';
@@ -58,9 +74,19 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   const isActive = () => settings.enabled && mode !== 'off' && !(mode === 'auto' && nativeDark);
 
   function render() {
-    const text = isActive() ? css(settings) : '';
+    const active = isActive();
+    const text = active ? css(settings) : '';
     if (style.textContent !== text) style.textContent = text;
     if (!style.isConnected && document.documentElement) document.documentElement.appendChild(style);
+
+    const shadowText = active ? `@media screen{${mediaRules(settings)}}` : '';
+    for (const ref of shadowStyles) {
+      const s = ref.deref();
+      if (!s) shadowStyles.delete(ref);
+      else if (s.textContent !== shadowText) s.textContent = shadowText;
+    }
+
+    if (active !== scanning) setScanning(active);
   }
 
   async function load() {
@@ -165,18 +191,81 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     detectTimer = setTimeout(detect, delay);
   }
 
+  // ---------- fotos em background-image e Shadow DOM ----------
+  // Fundos definidos no CSS do site não são selecionáveis por CSS: marcamos os
+  // elementos grandes com foto de fundo. Ícones/sprites (pequenos) e texturas
+  // repetidas ficam de fora e invertem junto com a página, como o texto.
+  // Roda em requestIdleCallback, em fatias, e só com o filtro ativo.
+
+  const BG_MIN = 48;
+  const seenShadows = new WeakSet();
+  const jobs = [];
+  let idleId = 0;
+  let scanning = false;
+
+  function inspect(el) {
+    if (!el.isConnected) return;
+    const sr = el.shadowRoot;
+    if (sr && !seenShadows.has(sr)) adoptShadow(sr);
+    if (el.hasAttribute(BG_MARK) || el === document.body) return;
+    const cs = getComputedStyle(el);
+    if (!cs.backgroundImage.includes('url(')) return;
+    if (cs.backgroundSize === 'auto' && cs.backgroundRepeat !== 'no-repeat') return; // textura
+    const r = el.getBoundingClientRect();
+    if (r.width < BG_MIN || r.height < BG_MIN) return;
+    if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
+    el.setAttribute(BG_MARK, '');
+  }
+
+  function adoptShadow(sr) {
+    seenShadows.add(sr);
+    const s = document.createElement('style');
+    s.textContent = isActive() ? `@media screen{${mediaRules(settings)}}` : '';
+    sr.appendChild(s);
+    shadowStyles.add(new WeakRef(s));
+    observer.observe(sr, { childList: true, subtree: true });
+    enqueue(sr);
+  }
+
+  function enqueue(node) {
+    jobs.push({ list: node.querySelectorAll('*'), i: 0 });
+    if (node.nodeType === 1) jobs.push({ list: [node], i: 0 });
+    if (!idleId) idleId = requestIdleCallback(work, { timeout: 1500 });
+  }
+
+  function work(deadline) {
+    idleId = 0;
+    if (!scanning) return void (jobs.length = 0);
+    let budget = deadline.didTimeout ? 300 : Infinity; // aba em segundo plano: fatia fixa
+    while (jobs.length && budget-- > 0 && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+      const job = jobs[jobs.length - 1];
+      if (job.i >= job.list.length) jobs.pop();
+      else inspect(job.list[job.i++]);
+    }
+    if (jobs.length) idleId = requestIdleCallback(work, { timeout: 1500 });
+  }
+
+  // Também religa nosso <style> se um framework que hidrata o <html> removê-lo.
+  const observer = new MutationObserver((mutations) => {
+    if (!alive() || window.__darkWick !== alive) return observer.disconnect();
+    if (!style.isConnected) render();
+    if (!scanning) return;
+    for (const m of mutations) for (const n of m.addedNodes) if (n.nodeType === 1) enqueue(n);
+  });
+
+  function setScanning(on) {
+    scanning = on;
+    observer.observe(root, { childList: true, subtree: on });
+    if (on) enqueue(root);
+  }
+
+  const rescan = () => scanning && enqueue(root); // pega elementos que só ganharam tamanho/shadow depois
+
   // ---------- inicialização ----------
 
+  observer.observe(root, { childList: true });
   render(); // otimista: aplica já no document_start, antes do primeiro paint
   load();
-
-  // Frameworks que hidratam o <html> podem remover nosso <style>: só observamos
-  // os filhos diretos do <html>, não a árvore inteira.
-  const keeper = new MutationObserver(() => {
-    if (!alive() || window.__darkWick !== alive) return keeper.disconnect();
-    if (!style.isConnected) render();
-  });
-  keeper.observe(root, { childList: true });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => scheduleDetect(), { once: true });
@@ -184,10 +273,11 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   if (document.readyState !== 'complete') {
     addEventListener('load', () => {
       scheduleDetect();
-      setTimeout(() => scheduleDetect(), 2000);
+      rescan();
+      setTimeout(() => (scheduleDetect(), rescan()), 2000);
     }, { once: true });
   } else {
-    setTimeout(() => scheduleDetect(), 2000);
+    setTimeout(() => (scheduleDetect(), rescan()), 2000);
   }
   window.navigation?.addEventListener('navigatesuccess', () => scheduleDetect(800));
 
