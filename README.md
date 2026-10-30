@@ -24,7 +24,7 @@ O Dark Wick faz o contrário:
 | Varredura do DOM | Árvore inteira, reescrevendo estilos | Só procura fotos em `background-image` e Shadow DOM, em tempo ocioso (`requestIdleCallback`), nos elementos novos e só com o filtro ativo |
 | Sites desligados | O script ainda roda | Nenhum código injetado (registro dinâmico com `excludeMatches`) |
 
-- **Mídia preservada:** imagens, vídeos, `<picture>`, embeds de vídeo, fotos de fundo (inline ou do CSS, se o elemento for grande) e imagens dentro de Shadow DOM aberto recebem o filtro inverso.
+- **Mídia preservada:** imagens, vídeos, `<picture>`, embeds de vídeo, iframes de anúncio, fotos de fundo (inline ou do CSS, inclusive em `::before`/`::after`, se forem grandes) e imagens dentro de Shadow DOM aberto recebem o filtro inverso. Cards com texto sobre a foto são revertidos inteiros, ficando como no original.
 - **Fidelidade de cor:** o filtro corta valores fora de [0,1] entre etapas, o que desbotava cores vivas. A página recebe `saturate(1.6)` e as mídias dessaturam antes de reverter, ficando dentro da faixa. As mídias também desfazem o contraste reduzido, que é pensado para o texto. Em tons de pele, o erro em relação ao original caiu de ~7 para ~2 (de 255).
 - **Sites já escuros:** no modo **Auto**, a página é amostrada em 6 pontos (no DOMContentLoaded, no load, 2 s depois e em navegações de SPA). Se ela já for escura, o filtro sai. O resultado fica em cache por site, para evitar o flash claro na próxima visita.
 - **Top layer:** modais (`dialog`) e popovers recebem o mesmo filtro; elementos em tela cheia (vídeos) ficam com as cores originais.

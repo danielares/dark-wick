@@ -27,8 +27,11 @@
   const REVERT = 'invert(1) hue-rotate(180deg)';
   const BG_INLINE = ['background-image: url', 'background-image:url', 'background: url', 'background:url']
     .map((s) => `[style*="${s}"]`);
-  const EMBEDS = ['youtube.com', 'youtube-nocookie.com', 'player.vimeo.com', 'dailymotion.com', 'player.twitch.tv', 'open.spotify.com']
-    .map((s) => `iframe[src*="${s}"]`);
+  // Players e anúncios em iframe são imagem/vídeo: mantêm as cores originais.
+  const EMBEDS = [
+    'youtube.com', 'youtube-nocookie.com', 'player.vimeo.com', 'dailymotion.com', 'player.twitch.tv', 'open.spotify.com',
+    'googlesyndication.com', 'doubleclick.net', 'amazon-adsystem.com', 'adnxs.com', 'criteo', '2mdn.net',
+  ].map((s) => `iframe[src*="${s}"]`).concat('iframe[id^="google_ads_iframe"]');
   // Elementos grandes com foto em background-image (marcados pela varredura).
   const BG_MARK = 'data-dw-bg';
   const BG = [...BG_INLINE, `[${BG_MARK}]`];
@@ -43,7 +46,10 @@
   // desfazem o contraste reduzido (pensado para o texto, não para fotos).
   const SAT = 1.6;
   const mediaFilter = (s) => `contrast(${100 / s.contrast}) saturate(${1 / SAT}) ${REVERT}`;
-  const mediaRules = (s) => `${MEDIA}{filter:${mediaFilter(s)}!important}
+  // :where() zera a especificidade de MEDIA para que NESTED sempre vença
+  // (sem isso, "img:not([src*=.svg])" ganhava de "picture img" e a imagem
+  // dentro de <picture> era invertida duas vezes).
+  const mediaRules = (s) => `:where(${MEDIA}){filter:${mediaFilter(s)}!important}
 ${NESTED}{filter:none!important}
 :fullscreen,:fullscreen *{filter:none!important}`;
 
@@ -193,8 +199,11 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
 
   // ---------- fotos em background-image e Shadow DOM ----------
   // Fundos definidos no CSS do site não são selecionáveis por CSS: marcamos os
-  // elementos grandes com foto de fundo. Ícones/sprites (pequenos) e texturas
-  // repetidas ficam de fora e invertem junto com a página, como o texto.
+  // elementos grandes com foto de fundo, inclusive em ::before/::after (comum
+  // em cards com texto sobre a foto, como no g1). O elemento inteiro é
+  // revertido, então foto, degradê e texto por cima ficam como no original.
+  // Ícones/sprites (pequenos) e texturas repetidas ficam de fora e invertem
+  // junto com a página, como o texto.
   // Roda em requestIdleCallback, em fatias, e só com o filtro ativo.
 
   const BG_MIN = 48;
@@ -208,13 +217,21 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     const sr = el.shadowRoot;
     if (sr && !seenShadows.has(sr)) adoptShadow(sr);
     if (el.hasAttribute(BG_MARK) || el === document.body) return;
-    const cs = getComputedStyle(el);
-    if (!cs.backgroundImage.includes('url(')) return;
-    if (cs.backgroundSize === 'auto' && cs.backgroundRepeat !== 'no-repeat') return; // textura
     const r = el.getBoundingClientRect();
     if (r.width < BG_MIN || r.height < BG_MIN) return;
     if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
-    el.setAttribute(BG_MARK, '');
+    if (isPhoto(getComputedStyle(el), r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
+      el.setAttribute(BG_MARK, '');
+    }
+  }
+
+  function isPhoto(cs, hostRect) {
+    if (!cs.backgroundImage.includes('url(')) return false;
+    if (cs.backgroundSize === 'auto' && cs.backgroundRepeat !== 'no-repeat') return false; // textura
+    // Pseudo-elementos: o tamanho é o deles (ícone num botão grande não conta).
+    const w = parseFloat(cs.width) || hostRect.width;
+    const h = parseFloat(cs.height) || hostRect.height;
+    return w >= BG_MIN && h >= BG_MIN;
   }
 
   function adoptShadow(sr) {
