@@ -2,8 +2,6 @@ import { hostOf, readState, writeSite } from './shared.js';
 
 const SCRIPT_ID = 'dark-wick';
 const PAGES = ['http://*/*', 'https://*/*'];
-const iconSet = (name) => Object.fromEntries([16, 32, 48].map((s) => [s, `/icons/${name}${s}.png`]));
-const ICONS = { on: iconSet('icon'), off: iconSet('off') };
 
 const isEnabled = (global) => global?.enabled ?? true;
 const isOff = (site) => site?.mode === 'off';
@@ -51,23 +49,9 @@ async function injectInto(host) {
   );
 }
 
-async function updateIcon(tab) {
-  if (!tab?.id) return;
-  const host = hostOf(tab.url);
-  const { global, site } = await readState(host);
-  const on = global.enabled && !(host && isOff(site));
-  chrome.action.setIcon({ tabId: tab.id, path: on ? ICONS.on : ICONS.off }).catch(() => {});
-}
-
-async function updateActiveIcons() {
-  const tabs = await chrome.tabs.query({ active: true });
-  tabs.forEach(updateIcon);
-}
-
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   await serial(syncRegistration);
   if (reason === 'install' || reason === 'update') injectInto();
-  updateActiveIcons();
 });
 
 chrome.runtime.onStartup.addListener(() => serial(syncRegistration));
@@ -86,13 +70,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
       for (const [k, c] of siteChanges) if (!isOff(c.newValue)) injectInto(k.slice(5));
     });
   }
-  updateActiveIcons();
 });
 
-chrome.tabs.onActivated.addListener(({ tabId }) => chrome.tabs.get(tabId).then(updateIcon, () => {}));
-chrome.tabs.onUpdated.addListener((_id, info, tab) => {
-  if (info.url || info.status === 'loading') updateIcon(tab);
-});
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command !== 'toggle-site') return;

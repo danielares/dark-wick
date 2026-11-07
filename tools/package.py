@@ -12,7 +12,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INCLUDE = ["manifest.json", "src/**/*.js", "src/**/*.html", "src/**/*.css", "icons/*.png"]
+INCLUDE = ["manifest.json", "src/**/*.js", "src/**/*.html", "src/**/*.css", "src/**/*.webp", "icons/*.png"]
 
 
 def manifest_refs(m):
@@ -27,9 +27,8 @@ def manifest_refs(m):
 
 
 def code_refs():
-    """Arquivos citados no código (ícones de estado, content script registrado)."""
+    """Arquivos citados no código (content script registrado)."""
     refs = {"src/content.js", "src/shared.js"}
-    refs |= {f"icons/{n}{s}.png" for n in ("icon", "off") for s in (16, 32, 48)}
     return refs
 
 

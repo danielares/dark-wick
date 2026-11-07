@@ -1,0 +1,18 @@
+The attached image is our brand mascot: a dark owl silhouette with glowing amber FLAME-shaped eyes, ear tufts, small beak, on a night indigo background with a pale gold crescent moon.
+
+Create a TOOLBAR ICON exploration sheet for this mascot: a perfectly regular 3x3 grid of 9 equal square cells on a flat solid neutral mid-grey background (#808080), thin gutters. NO text, NO letters, NO numbers. Each cell holds ONE icon centered, filling ~80% of the cell.
+
+GOAL: the icon must be instantly recognizable at 16x16 and 32x32 pixels in a browser toolbar, on both light and dark toolbars. So: ZOOM IN on the owl — the owl HEAD/FACE must fill almost the entire icon. Huge glowing amber flame eyes (the two flames are the most important feature, very large, high contrast), clear pointed ear tufts, tiny beak. Extremely simple bold flat shapes, thick silhouette, no thin lines, no small stars, no texture, no tiny details.
+
+9 variations (same character, same palette: deep indigo #2a2860 / night navy, dark owl #1a1420, amber flames #FFC870→#FF8A2A, optional pale gold crescent #F5E3C0):
+1. Rounded-square indigo tile, owl head filling the tile edge to edge, two big flame eyes.
+2. Circle indigo badge, owl head inside filling it, flame eyes.
+3. Owl head silhouette ONLY (no tile), dark owl with a thin pale gold outline so it reads on dark backgrounds, big flame eyes.
+4. Rounded-square tile, owl head + a thin crescent moon arc hugging the head from behind.
+5. Rounded-square tile, extreme close-up: just the two flame eyes inside round eye discs and the ear tufts, very geometric.
+6. Owl head silhouette where the head itself is indigo with flame eyes (no tile), bold.
+7. Circle badge with crescent moon shape, the owl head nested inside the crescent, flame eyes.
+8. Rounded-square tile with gradient indigo→violet, minimal owl face built from two circles (eyes with flames) and a triangle beak, ear tufts as two triangles.
+9. Rounded-square tile, owl head with eyes as pure glowing amber flames without eye discs, maximum simplicity.
+
+Style: flat vector app icon, crisp edges, bold, modern, minimal, Apple-like polish, subtle soft glow around the flame eyes only.

@@ -6,16 +6,10 @@ const hostEl = $('#host');
 const faviconEl = $('#favicon');
 const statusEl = $('#status');
 const modeEl = $('#mode');
-const hintEl = $('#hint');
 const customEl = $('#custom');
 const sliders = [...document.querySelectorAll('input[type="range"]')];
 
 const MODES = ['auto', 'on', 'off'];
-const HINTS = {
-  auto: 'Escurece, a menos que o site já seja escuro.',
-  on: 'Sempre escurece, mesmo sites que já são escuros.',
-  off: 'Este site mantém as cores originais.',
-};
 const PROTECTED = /^(chromewebstore\.google\.com|chrome\.google\.com|microsoftedge\.microsoft\.com)$/;
 
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -32,7 +26,9 @@ function render() {
   const i = MODES.indexOf(site.mode);
   modeEl.style.setProperty('--i', i);
   modeEl.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', b.dataset.mode === site.mode));
-  hintEl.textContent = HINTS[site.mode];
+  owlEl.setAttribute('aria-checked', global.enabled);
+  $('#tuning-scope').textContent = site.custom ? 'Este site' : 'Todos os sites';
+  logo.go(global.enabled);
 
   customEl.checked = !!site.custom;
   const t = tuning();
@@ -55,15 +51,15 @@ function setStatus(text, tone = '') {
 
 async function refreshStatus() {
   if (!host) return setStatus('Página interna do navegador');
-  if (!global.enabled) return setStatus('Pausado em todos os sites');
+  if (!global.enabled) return setStatus('Pausado');
   if (site.mode === 'off') return setStatus('Cores originais');
   try {
     const r = await chrome.tabs.sendMessage(tab.id, { type: 'status' });
     if (r?.state === 'on') setStatus('Escuro ativo', 'on');
-    else if (r?.state === 'native') setStatus('Site já é escuro — mantido', 'ok');
+    else if (r?.state === 'native') setStatus('Site já é escuro', 'ok');
     else setStatus('Cores originais');
   } catch {
-    setStatus(PROTECTED.test(host) ? 'Página protegida pelo navegador' : 'Recarregue a página para aplicar', 'warn');
+    setStatus(PROTECTED.test(host) ? 'Página protegida' : 'Recarregue a página', 'warn');
   }
 }
 
@@ -84,6 +80,88 @@ async function saveTuning(t) {
 }
 
 // ---------- eventos ----------
+
+// ---------- coruja animada ----------
+// Desenhada num canvas a partir de tiras de quadros (img/*.webp). A transição avança ou recua
+// quadro a quadro até o estado-alvo; clicar no meio inverte de onde está, sem saltos.
+// Parada no estado, toca o loop sutil daquele estado (chamas/estrelas à noite, sol de dia).
+const owlEl = $('#owl');
+const logo = (() => {
+  const cv = $('#logo');
+  const ctx = cv.getContext('2d');
+  const load = (n) => new Promise((ok) => {
+    const im = new Image();
+    im.onload = () => ok(im);
+    im.src = `img/${n}.webp`;
+  });
+  const STEP = 42; // ms por quadro na transição
+  const LOOP = 80; // ms por quadro no loop
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let sheets = null;
+  let pos = null; // 0 = noite … último = dia (pode ser fracionário durante a transição)
+  let target = 0;
+  let loopStart = 0;
+  let last = 0;
+
+  function draw(im, i) {
+    const s = im.height;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(im, i * s, 0, s, s, 0, 0, cv.width, cv.height);
+  }
+
+  function tick(now) {
+    const dt = last ? now - last : 0;
+    last = now;
+    const { vira } = sheets;
+    if (pos !== target) {
+      const step = dt / STEP;
+      pos = pos < target ? Math.min(target, pos + step) : Math.max(target, pos - step);
+      draw(vira, Math.round(pos));
+      if (pos === target) loopStart = now;
+    } else {
+      const im = target === 0 ? sheets.noite : sheets.dia;
+      const n = im.width / im.height;
+      draw(im, still ? 0 : Math.floor((now - loopStart) / LOOP) % n);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  const ready = Promise.all(['noite', 'dia', 'vira'].map(load)).then(([noite, dia, vira]) => {
+    sheets = { noite, dia, vira };
+    sheets.end = vira.width / vira.height - 1;
+  });
+
+  return {
+    async go(on) {
+      await ready;
+      target = on ? 0 : sheets.end;
+      if (pos === null) {
+        pos = target; // primeira abertura: sem transição
+        requestAnimationFrame(tick);
+      }
+    },
+  };
+})();
+
+owlEl.addEventListener('click', () => enabledEl.click());
+
+// ---------- submenu ----------
+const home = $('#home');
+const tuningView = $('#tuning');
+function openSub(open) {
+  document.body.classList.toggle('sub', open);
+  home.inert = open;
+  tuningView.inert = !open;
+  (open ? $('#back') : $('#open-tuning')).focus({ preventScroll: true });
+}
+$('#open-tuning').addEventListener('click', () => openSub(true));
+$('#back').addEventListener('click', () => openSub(false));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('sub')) {
+    e.preventDefault();
+    openSub(false);
+  }
+});
 
 enabledEl.addEventListener('change', async () => {
   global = { ...global, enabled: enabledEl.checked };
@@ -151,9 +229,9 @@ if (host) {
 
 const cmd = (await chrome.commands.getAll()).find((c) => c.name === 'toggle-site');
 $('#shortcut').innerHTML = cmd?.shortcut
-  ? `${cmd.shortcut.split('+').map((k) => `<kbd>${k}</kbd>`).join('+')} alterna este site`
-  : 'Defina um atalho em chrome://extensions/shortcuts';
-$('#version').textContent = `v${chrome.runtime.getManifest().version}`;
+  ? `${cmd.shortcut.split('+').map((k) => `<kbd>${k}</kbd>`).join(' ')} alterna o site`
+  : 'Sem atalho definido';
+$('#version').textContent = `Versão ${chrome.runtime.getManifest().version}`;
 
 render();
 refreshStatus();
