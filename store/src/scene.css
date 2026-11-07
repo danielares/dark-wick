@@ -2,20 +2,21 @@
 html, body { width: 100%; height: 100%; overflow: hidden; }
 body {
   position: relative;
+  /* Céu da marca: índigo noturno com um brilho dourado de lua. */
   background:
-    radial-gradient(60% 70% at 85% 30%, rgba(255, 130, 60, 0.16), transparent 70%),
-    radial-gradient(50% 60% at 0% 100%, rgba(255, 170, 80, 0.07), transparent 70%),
-    #0f0f12;
+    radial-gradient(55% 65% at 85% 25%, rgba(245, 227, 192, 0.10), transparent 70%),
+    radial-gradient(60% 70% at 10% 100%, rgba(255, 150, 60, 0.07), transparent 70%),
+    radial-gradient(120% 120% at 70% 20%, #211f4d 0%, #14122f 50%, #0b0a18 100%);
   color: #ececf1;
   font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
 }
 iframe { border: 0; display: block; background: transparent; }
 
 .brand { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 650; }
-.brand img { width: 44px; height: 44px; }
+.brand img { width: 52px; height: 52px; border-radius: 13px; box-shadow: 0 0 24px -4px rgba(255, 168, 70, .45); }
 
 h1 { font-size: 46px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; }
-h1 em { font-style: normal; background: linear-gradient(135deg, #ffc56b, #ff7a45); -webkit-background-clip: text; color: transparent; }
+h1 em { font-style: normal; background: linear-gradient(135deg, #ffc870, #ff8a2a); -webkit-background-clip: text; color: transparent; }
 .lead { color: #9a9aa6; font-size: 19px; line-height: 1.5; }
 
 .features { list-style: none; padding: 0; display: grid; gap: 16px; }
@@ -31,7 +32,7 @@ h1 em { font-style: normal; background: linear-gradient(135deg, #ffc56b, #ff7a45
   position: absolute; overflow: hidden; border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
-  background: #1b1b20;
+  background: #17162b;
 }
 .browser .bar { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #1b1b20; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
 .browser .bar span { width: 11px; height: 11px; border-radius: 50%; background: #3a3a42; }

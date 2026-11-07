@@ -16,11 +16,11 @@ A cada nova versão, aumente `version` no `manifest.json`.
 
 ## 1. Pacote
 
-**Atualização (item já publicado):** no painel, abra a Dark Wick → **Pacote** → **Enviar novo pacote** → `dist/dark-wick-1.1.0.zip`. Revise a descrição e a justificativa de host abaixo (mudaram na 1.1.0) e clique em **Enviar para revisão**.
+**Atualização (item já publicado):** no painel, abra a Dark Wick → **Pacote** → **Enviar novo pacote** → `dist/dark-wick-1.1.0.zip`. Revise a descrição (Página "Detalhes do app") e a justificativa de host (Privacidade) abaixo (mudaram na 1.1.0) e clique em **Enviar para revisão**.
 
 (Primeiro envio: **Novo item** → o mesmo `.zip`.)
 
-## 2. Listagem na loja (Store listing)
+## 2. Página "Detalhes do app" (Store listing)
 
 **Idioma:** Português (Brasil)
 

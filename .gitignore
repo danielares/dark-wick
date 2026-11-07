@@ -1,5 +1,6 @@
 dist/
 store/src/_popup-demo.html
+store/src/_demo-*.png
 __pycache__/
 
 # quadros dos loops: gerados por tools/owl_frames.py

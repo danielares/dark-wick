@@ -5,6 +5,7 @@ popup e o content script reais. Requer Python 3 + Pillow.
 
     python store/build.py
 """
+import json
 import os
 import re
 import shutil
@@ -18,6 +19,14 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "store" / "src"
 OUT = ROOT / "store" / "assets"
+
+# Páginas renderizadas sozinhas antes das cenas: o content script dentro de um
+# iframe só reverte mídias (o filtro vem da página de cima), então o "depois"
+# é renderizado como página principal e entra na cena como imagem.
+PRERENDER = [
+    ("demo-page.html", "_demo-light.png", (1244, 592)),
+    ("demo-page.html?dark=1", "_demo-dark.png", (1244, 592)),
+]
 
 SCENES = [
     ("screenshot-1.html", "screenshot-1.png", (1280, 800)),
@@ -54,17 +63,18 @@ def build_popup_demo():
     """Copia o <body> do popup real para uma página com a API chrome simulada."""
     html = (ROOT / "src" / "popup" / "popup.html").read_text(encoding="utf-8")
     body = re.search(r"<body>(.*)</body>", html, re.S).group(1)
-    body = body.replace('src="popup.js"', 'src="../../src/popup/popup.js"')
+    version = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))["version"]
     page = f"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
-<link rel="stylesheet" href="../../src/popup/popup.css">
+<base href="../../src/popup/">
+<link rel="stylesheet" href="popup.css">
 <style>* {{ transition: none !important; }}</style>
 <script>
   const state = new URLSearchParams(location.search).get('state') || 'on';
   window.chrome = {{
     tabs: {{ query: async () => [{{ id: 1, url: 'https://www.jornaldamanha.com.br/' }}], sendMessage: async () => ({{ state }}) }},
     storage: {{ sync: {{ get: async () => ({{}}), set: async () => {{}}, remove: async () => {{}} }} }},
-    runtime: {{ getURL: () => "{FAVICON}", getManifest: () => ({{ version: '1.0.0' }}) }},
+    runtime: {{ getURL: () => "{FAVICON}", getManifest: () => ({{ version: '{version}' }}) }},
     commands: {{ getAll: async () => [{{ name: 'toggle-site', shortcut: 'Alt+Shift+D' }}] }},
   }};
 </script>
@@ -80,7 +90,7 @@ def render(browser, scene, out, size, profile):
             "--allow-file-access-from-files", "--force-device-scale-factor=1",
             f"--user-data-dir={profile}", f"--window-size={w},{h}",
             "--virtual-time-budget=4000", f"--screenshot={out}",
-            (SRC / scene).as_uri(),
+            (SRC / scene.split("?")[0]).as_uri() + ("?" + scene.split("?")[1] if "?" in scene else ""),
         ],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
     )
@@ -103,6 +113,8 @@ def main():
     browser = find_browser()
     build_popup_demo()
     with tempfile.TemporaryDirectory() as profile:
+        for scene, name, size in PRERENDER:
+            render(browser, scene, SRC / name, size, profile)
         for scene, name, size in SCENES:
             render(browser, scene, OUT / name, size, profile)
             print(f"ok  {name}")
