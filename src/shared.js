@@ -1,8 +1,8 @@
 // Estado compartilhado entre background e popup.
 // O content script tem uma cópia de DEFAULTS — mantenha as duas em sincronia.
 
-export const DEFAULTS = { enabled: true, brightness: 100, contrast: 86, sepia: 8, grayscale: 0 };
-export const TUNING = ['brightness', 'contrast', 'sepia', 'grayscale'];
+export const DEFAULTS = { enabled: true, brightness: 100, contrast: 86, sepia: 8, grayscale: 0, photos: 90 };
+export const TUNING = ['brightness', 'contrast', 'sepia', 'grayscale', 'photos'];
 
 export const siteKey = (host) => `site:${host}`;
 

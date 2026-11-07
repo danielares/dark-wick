@@ -28,15 +28,19 @@
   const MSG = '__darkWick';
 
   // Cópia de src/shared.js (content scripts não importam módulos).
-  const DEFAULTS = { enabled: true, brightness: 100, contrast: 86, sepia: 8, grayscale: 0 };
+  const DEFAULTS = { enabled: true, brightness: 100, contrast: 86, sepia: 8, grayscale: 0, photos: 90 };
 
   const host = location.hostname.replace(/^www\./, '');
   const SITE_KEY = `site:${host}`;
   const DARK_KEY = `dark:${host}`;
 
   const REVERT = 'invert(1) hue-rotate(180deg)';
-  const BG_INLINE = ['background-image: url', 'background-image:url', 'background: url', 'background:url']
+  // Ícone pequeno em background-image inline (seta, lupa em <span>/<i>) é
+  // marcado pela varredura e inverte com o texto, como um ícone em <img>.
+  const GLYPH_MARK = 'data-dw-glyph';
+  const BG_INLINE_RAW = ['background-image: url', 'background-image:url', 'background: url', 'background:url']
     .map((s) => `[style*="${s}"]`);
+  const BG_INLINE = BG_INLINE_RAW.map((s) => `${s}:not([${GLYPH_MARK}])`);
   // Players e anúncios em iframe são imagem/vídeo: mantêm as cores originais.
   const EMBEDS = [
     'youtube.com', 'youtube-nocookie.com', 'player.vimeo.com', 'dailymotion.com', 'player.twitch.tv', 'open.spotify.com',
@@ -49,11 +53,14 @@
   const BG = [...BG_INLINE, `[${BG_MARK}]`, `[${KEEP_MARK}]`];
   // SVGs via <img> costumam ser ícones/logos: deixamos inverter junto com o
   // texto. Só conta o arquivo .svg em si (a Wikipédia serve fotos e bandeiras
-  // como ".../Arquivo.svg/250px-Arquivo.svg.png"). Imagens pequenas também
-  // são tratadas como ícones pela varredura (ICON_MARK).
+  // como ".../Arquivo.svg/250px-Arquivo.svg.png"). A varredura também marca
+  // como "inverte com a página" (ICON_MARK) ícones pequenos de uma cor, logos
+  // escuros sobre transparência e diagramas/gráficos claros.
   const ICON_MARK = 'data-dw-icon';
   const CURTAIN_MARK = 'data-dw-curtain';
-  const MEDIA = [`img:not([src$=".svg"],[src*=".svg?"],[src*=".svg#"],[src^="data:image/svg"],[${ICON_MARK}])`, 'picture', 'video', 'embed', 'object', 'svg image', ...BG, ...EMBEDS].join(',');
+  // PDF embutido é documento (texto em fundo branco), não foto: escurece junto.
+  const NOT_PDF = ':not([type="application/pdf"],[src*=".pdf"],[data*=".pdf"])';
+  const MEDIA = [`img:not([src$=".svg"],[src*=".svg?"],[src*=".svg#"],[src^="data:image/svg"],[${ICON_MARK}])`, 'picture', 'video', `embed${NOT_PDF}`, `object${NOT_PDF}`, 'svg image', ...BG, ...EMBEDS].join(',');
   // Mídia dentro de mídia já revertida seria invertida duas vezes.
   const NESTED = ['picture img', ...BG.map((s) => `${s} :is(img,picture,video,embed,object,iframe,${BG.join(',')})`)].join(',');
 
@@ -62,7 +69,10 @@
   // dessaturam antes de reverter, ficando dentro da faixa; elas também
   // desfazem o contraste reduzido (pensado para o texto, não para fotos).
   const SAT = 1.6;
-  const mediaFilter = (s) => `contrast(${100 / s.contrast}) saturate(${1 / SAT}) ${REVERT}`;
+  // brightness() vem antes do reverso: a página inverte de novo depois, então
+  // é aqui que a foto escurece de fato ("Fotos" no popup; não ofuscam no escuro).
+  const mediaFilter = (s) =>
+    `${s.photos < 100 ? `brightness(${s.photos / 100}) ` : ''}contrast(${100 / s.contrast}) saturate(${1 / SAT}) ${REVERT}`;
   // Fundos marcados (cor viva/escuro) usam um reverso próprio: o inverso exato
   // pede valores fora de [0,1] (luminância invertida + croma), que o corte do
   // filtro desbota (amarelo vira creme). Sem desfazer o contraste e com menos
@@ -202,6 +212,10 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       const bg = el && parseColor(getComputedStyle(el).backgroundColor);
       if (bg?.[3] >= 0.5) return bg;
     }
+    // Fundo transparente com texto claro: o escuro está em algum wrapper (ou
+    // num canvas/imagem) — texto claro sobre branco não existe na prática.
+    const text = document.body && parseColor(getComputedStyle(document.body).color);
+    if (text && luma(text) > 0.6) return [24, 24, 24, 1];
     return [255, 255, 255, 1];
   }
 
@@ -240,13 +254,34 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     const h = innerHeight;
     let dark = 0;
     let total = 0;
+    // O site já se inverte sozinho com filtro (modo escuro próprio barato).
+    if ((invertCount(getComputedStyle(root).filter) + invertCount(getComputedStyle(document.body).filter)) % 2) return true;
     for (const [px, py] of POINTS) {
       const c = backgroundAt(w * px, h * py);
       if (!c) continue;
       total++;
       if (luma(c) < 0.4) dark++;
     }
-    return total > 0 && dark / total >= 0.6 && luma(pageBackground(early)) < 0.4;
+    if (!total) return false;
+    const ratio = dark / total;
+    const bgDark = luma(pageBackground(early)) < 0.4;
+    if (ratio >= 0.6 && bgDark) return true;
+    // O site declara tema escuro: basta a amostra concordar em parte.
+    return (ratio >= 0.5 || (bgDark && ratio >= 0.3)) && declaresDark();
+  }
+
+  // Sinais declarados de tema escuro: <meta name="color-scheme" content="dark">,
+  // color-scheme: dark no CSS, e classes/atributos de tema no <html>/<body>.
+  // "light dark" (site que suporta os dois) não conta.
+  const DARK_CLASS = /(^|\s)(dark|dark-mode|dark-theme|theme-dark|is-dark|dark_mode|night-mode|theme--dark)(\s|$)/i;
+  const THEME_ATTRS = ['data-theme', 'data-bs-theme', 'data-color-scheme', 'data-color-mode', 'data-mode'];
+  function declaresDark() {
+    const only = /^(only\s+)?dark$/i;
+    if (only.test(document.querySelector('meta[name="color-scheme"]')?.content?.trim() || '')) return true;
+    if (only.test(getComputedStyle(root).colorScheme)) return true;
+    return [root, document.body].some(
+      (el) => DARK_CLASS.test(classOf(el)) || THEME_ATTRS.some((a) => /^dark/i.test(el.getAttribute(a) || '')),
+    );
   }
 
   // early: chamado durante o carregamento. Só pode concluir "escuro" (página
@@ -335,7 +370,10 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     if (eager && (r.top >= innerHeight || r.bottom <= 0)) return false;
     if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
     if (el.tagName === 'IMG' || el.tagName === 'VIDEO') {
-      if (el.tagName === 'IMG') mark(el, ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX && isIcon(el, r));
+      if (el.tagName === 'IMG') {
+        const small = r.width <= ICON_MAX && r.height <= ICON_MAX;
+        mark(el, ICON_MARK, small ? isIcon(el, r) : isGraphic(el));
+      }
       if (r.width >= COVER_MIN_W && r.height >= COVER_MIN_H) markCover(el, r);
       return;
     }
@@ -347,13 +385,28 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     mark(el, CURTAIN_MARK, curtain && isScrim(cs));
     if (el.hasAttribute(BG_MARK)) return;
     if (r.width < BG_MIN || r.height < BG_MIN) {
-      // Avatar pequeno em background-image (foto de usuário em <span>).
-      if (r.width >= SMALL_MIN && r.height >= SMALL_MIN && isSmallPhoto(el, cs, r)) mark(el, BG_MARK, true);
+      // Avatar pequeno em background-image (foto de usuário em <span>) mantém
+      // as cores; qualquer outro ícone inline pequeno inverte com o texto.
+      const photo = r.width >= SMALL_MIN && r.height >= SMALL_MIN && isSmallPhoto(el, cs, r);
+      if (photo) mark(el, BG_MARK, true);
+      mark(el, GLYPH_MARK, !photo && el.matches(BG_INLINE_RAW.join(',')));
       return;
     }
-    if (isPhoto(cs, r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
+    mark(el, GLYPH_MARK, false); // cresceu: deixou de ser ícone
+    const before = getComputedStyle(el, '::before');
+    const after = getComputedStyle(el, '::after');
+    // Atributo legado background="foto.jpg" (tabelas e e-mails antigos).
+    const legacy = el.hasAttribute('background') && cs.backgroundImage.includes('url(');
+    if (legacy || isPhoto(cs, r) || isPhoto(before, r) || isPhoto(after, r) || isContentPhoto(before) || isContentPhoto(after)) {
       mark(el, BG_MARK, true);
     }
+  }
+
+  // ::before/::after { content: url(foto.jpg) } grande: imagem como conteúdo.
+  // Pequena (ícone) ou SVG inverte com o texto.
+  function isContentPhoto(cs) {
+    if (!cs.content.startsWith('url(') || SVG_SRC.test(cs.content.slice(4).replace(/["')]/g, ''))) return false;
+    return parseFloat(cs.width) >= BG_MIN && parseFloat(cs.height) >= BG_MIN;
   }
 
   // Foto/vídeo usado como fundo (hero com object-fit: cover ou absoluto atrás
@@ -472,8 +525,19 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     return false;
   }
 
-  function pixelVerdict(img, src) {
-    if (pixelCache.has(src)) return pixelCache.get(src);
+  // Imagem grande que deve escurecer com a página em vez de manter as cores:
+  // logo escuro sobre transparência (sumiria no fundo escuro) e diagrama,
+  // gráfico ou print quase todo branco (viraria um bloco branco). Só com
+  // pixels legíveis e critérios conservadores: na dúvida, é foto.
+  function isGraphic(img) {
+    const src = img.currentSrc || img.src || '';
+    if (!src || SVG_SRC.test(src) || PHOTO_EXT.test(src)) return false;
+    return pixelVerdict(img, src, 'graphic', classifyGraphic) === true;
+  }
+
+  function pixelVerdict(img, src, kind = 'small', classify = classifyPixels) {
+    const key = `${kind}\n${src}`;
+    if (pixelCache.has(key)) return pixelCache.get(key);
     let readable = /^(data|blob):/.test(src) || img.crossOrigin != null;
     try {
       readable ||= new URL(src, location.href).origin === location.origin;
@@ -485,19 +549,66 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     }
     let v = null;
     try {
-      v = classifyPixels(img);
+      // Amostra reduzida (no máximo 48 px no lado maior).
+      const k = Math.min(1, 48 / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * k));
+      const h = Math.max(1, Math.round(img.naturalHeight * k));
+      pixelCtx ??= new OffscreenCanvas(48, 48).getContext('2d', { willReadFrequently: true });
+      pixelCtx.clearRect(0, 0, 48, 48);
+      pixelCtx.drawImage(img, 0, 0, w, h);
+      v = classify(pixelCtx.getImageData(0, 0, w, h).data, w, h);
     } catch {} // canvas contaminado (redirecionamento para outra origem etc.)
-    pixelCache.set(src, v);
+    pixelCache.set(key, v);
     return v;
   }
 
-  function classifyPixels(img) {
-    const w = Math.min(img.naturalWidth, 32);
-    const h = Math.min(img.naturalHeight, 32);
-    pixelCtx ??= new OffscreenCanvas(32, 32).getContext('2d', { willReadFrequently: true });
-    pixelCtx.clearRect(0, 0, 32, 32);
-    pixelCtx.drawImage(img, 0, 0, w, h);
-    const d = pixelCtx.getImageData(0, 0, w, h).data;
+  function classifyGraphic(d, w, h) {
+    const n = w * h;
+    let trans = 0;
+    let white = 0;
+    let dark = 0;
+    let sum = 0;
+    let sq = 0;
+    const buckets = new Map(); // cores (3 bits por canal) fora do branco
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128) {
+        trans++;
+        continue;
+      }
+      const l = luma([d[i], d[i + 1], d[i + 2]]);
+      sum += l;
+      sq += l * l;
+      if (l < 0.3) dark++;
+      if (l > 0.9) white++;
+      else {
+        const c = ((d[i] >> 5) << 6) | ((d[i + 1] >> 5) << 3) | (d[i + 2] >> 5);
+        buckets.set(c, (buckets.get(c) || 0) + 1);
+      }
+    }
+    const opaque = n - trans;
+    if (opaque < n * 0.02) return false;
+    const rest = opaque - white;
+    const major = [...buckets.values()].filter((c) => c >= rest * 0.03).length;
+    // Logo/diagrama escuro e chapado sobre transparência (foto recortada tem
+    // sombreado: mais tons e desvio maior).
+    const sd = Math.sqrt(Math.max(0, sq / opaque - (sum / opaque) ** 2));
+    if (trans >= n * 0.1 && dark >= opaque * 0.85 && sd < 0.12 && major <= 4) return true;
+    // Diagrama/print: opaco, majoritariamente branco, poucas cores e feito de
+    // traços finos (quase todo pixel não branco encosta no branco); foto de
+    // produto em fundo branco tem áreas sólidas e sombreadas.
+    if (trans >= n * 0.1 || white < n * 0.7 || major > 12 || !rest) return false;
+    const isWhite = (x, y) => x < 0 || y < 0 || x >= w || y >= h || luma([d[(y * w + x) * 4], d[(y * w + x) * 4 + 1], d[(y * w + x) * 4 + 2]]) > 0.9;
+    let edge = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (isWhite(x, y)) continue;
+        if (isWhite(x - 1, y) || isWhite(x + 1, y) || isWhite(x, y - 1) || isWhite(x, y + 1)) edge++;
+      }
+    }
+    return edge >= rest * 0.6;
+  }
+
+  function classifyPixels(d, w, h) {
     const px = [];
     for (let i = 0; i < d.length; i += 4) if (d[i + 3] >= 128) px.push(i);
     const total = w * h;
@@ -661,11 +772,11 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     const win = frame.contentWindow;
     if (!win) return;
     const on = displaysInverted(frame);
-    const key = on ? `on:${settings.contrast}` : 'off';
+    const key = on ? `on:${settings.contrast}:${settings.photos}` : 'off';
     if (!force && sentState.get(win) === key) return;
     sentState.set(win, key);
     try {
-      win.postMessage({ [MSG]: 'state', on, contrast: settings.contrast }, '*');
+      win.postMessage({ [MSG]: 'state', on, contrast: settings.contrast, photos: settings.photos }, '*');
     } catch {}
   }
 
@@ -697,7 +808,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       if (f) sendState(f, true);
     } else if (d[MSG] === 'state' && !isTop && e.source === window.parent) {
       inherited = !!d.on;
-      if (typeof d.contrast === 'number') settings = { ...settings, contrast: d.contrast };
+      for (const k of ['contrast', 'photos']) if (typeof d[k] === 'number') settings = { ...settings, [k]: d[k] };
       render();
     }
   }, true);
