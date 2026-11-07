@@ -1,0 +1,14 @@
+Image 1 is the chosen app icon design (an owl silhouette in front of a crescent moon, inside a rounded-square tile). Image 2 is a reference ONLY for the owl's eyes: glowing amber FLAME-shaped eyes.
+
+Create a SPRITE SHEET animation for this icon: a perfectly regular 3x3 grid of 9 equal square frames on a flat solid dark background (#121214), thin straight gutters, read left-to-right, top-to-bottom. NO text, NO numbers, NO labels. In every frame the rounded-square tile, the owl silhouette, its size, pose and position are IDENTICAL (same camera, same framing, pixel-aligned like animation frames) — only the elements described below change.
+
+Redesign of the icon (frame 1 = the final icon, NIGHT / dark mode ON):
+- The owl from image 1 (same compact silhouette with ear tufts, small amber beak), but its eyes are glowing amber flames like image 2.
+- A much more beautiful moon behind the owl: an elegant, smooth, luminous crescent moon with a soft pale-gold glow and a subtle halo, gracefully curved, thin tapered tips, clearly lighter than the deep indigo night tile background. A couple of tiny stars allowed.
+- Tile background: deep indigo/charcoal night gradient.
+
+Frame 9 = DAY / light mode OFF: the same owl in the same position, now ASLEEP with eyes closed (two gentle curved closed-eye lines, no flames), and in place of the moon a warm round SUN (soft yellow disc with simple rays) in the same spot behind the owl; the tile background is a soft light warm sky (pale cream/light blue), owl silhouette stays dark.
+
+Frames 2-8 = a smooth in-between transition from frame 1 to frame 9: the crescent moon gradually fills / rotates into a full round disc and turns into the sun (rays growing out), the background gradually brightens from night indigo to light day sky, the stars fade out, and the flame eyes shrink, dim and the eyelids close until the owl is sleeping. Each frame a small, even step of change, so playing them in sequence gives a fluid mini animation.
+
+Style: flat vector, crisp clean shapes, readable at 32x32 pixels, warm amber/gold accents (#FF9A3C to #FFC870), soft glows allowed, no photorealism, no clutter.
