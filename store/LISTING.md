@@ -16,7 +16,9 @@ A cada nova versão, aumente `version` no `manifest.json`.
 
 ## 1. Pacote
 
-**Novo item** → envie `dist/dark-wick-1.0.0.zip`.
+**Atualização (item já publicado):** no painel, abra a Dark Wick → **Pacote** → **Enviar novo pacote** → `dist/dark-wick-1.1.0.zip`. Revise a descrição e a justificativa de host abaixo (mudaram na 1.1.0) e clique em **Enviar para revisão**.
+
+(Primeiro envio: **Novo item** → o mesmo `.zip`.)
 
 ## 2. Listagem na loja (Store listing)
 
@@ -37,10 +39,11 @@ Em vez de ler e reescrever as folhas de estilo de cada página, a Dark Wick apli
 
 RECURSOS
 • Escurece qualquer site com um clique.
-• Fotos e vídeos não ficam invertidos.
+• Fotos e vídeos não ficam invertidos — inclusive dentro de iframes (comentários, widgets), avatares pequenos e emojis.
+• Logos escuros, diagramas e PDFs embutidos escurecem junto com a página, sem virar blocos brancos.
 • Modo Auto: detecta quando o site já tem tema escuro e não mexe nele.
 • Três modos por site: Auto, Sempre ou Nunca.
-• Ajuste de brilho, contraste, calor (tom amarelado) e tons de cinza — para todos os sites ou só para o site atual, com prévia ao vivo.
+• Ajuste de brilho, contraste, calor (tom amarelado), tons de cinza e brilho das fotos — para todos os sites ou só para o site atual, com prévia ao vivo.
 • Atalho de teclado: Alt+Shift+D liga e desliga o site atual.
 • Nos sites marcados como "Nunca", nenhum código da extensão é carregado.
 
@@ -48,7 +51,7 @@ PRIVACIDADE
 A Dark Wick não coleta nem envia nenhum dado. Ela não faz requisições de rede, não usa analytics e não exibe anúncios. Suas preferências ficam guardadas no próprio navegador.
 
 LIMITAÇÕES
-Como a extensão usa um filtro de cor, cores extremamente vivas em imagens (como amarelo ou vermelho puros) podem ficar levemente alteradas. Ícones pequenos e texturas de fundo são escurecidos junto com a página. Se algum site não ficar bom, marque "Nunca" para ele.
+Como a extensão usa um filtro de cor, cores extremamente vivas em imagens (como amarelo ou vermelho puros) podem ficar levemente alteradas. Ícones de uma cor só e texturas de fundo são escurecidos junto com a página. Se algum site não ficar bom, marque "Nunca" para ele.
 ```
 
 **Categoria:** Acessibilidade
@@ -69,17 +72,17 @@ Como a extensão usa um filtro de cor, cores extremamente vivas em imagens (como
 **Finalidade única (Single purpose):**
 
 ```
-Aplicar um modo escuro às páginas da web que o usuário visita, com controles para ligar/desligar por site e ajustar brilho, contraste, calor e tons de cinza.
+Aplicar um modo escuro às páginas da web que o usuário visita, com controles para ligar/desligar por site e ajustar brilho, contraste, calor, tons de cinza e brilho das fotos.
 ```
 
 **Justificativa das permissões:**
 
 | Permissão | Justificativa (colar) |
 |---|---|
-| `storage` | Guardar as preferências do usuário (ligado/desligado, modo por site, brilho, contraste, calor e tons de cinza) e um cache local dos sites que já têm tema escuro. |
+| `storage` | Guardar as preferências do usuário (ligado/desligado, modo por site, brilho, contraste, calor, tons de cinza e brilho das fotos) e um cache local dos sites que já têm tema escuro. |
 | `scripting` | Registrar o script que aplica o modo escuro ao carregar as páginas, excluindo os sites que o usuário desativou, e aplicá-lo nas abas já abertas quando o usuário liga a extensão ou um site. |
 | `favicon` | Mostrar o ícone do site atual no popup da extensão, para o usuário identificar a qual site as configurações se aplicam. |
-| Permissão de host (`http://*/*`, `https://*/*`) | A única função da extensão é escurecer qualquer site que o usuário abrir, por isso ela precisa inserir sua folha de estilo em todas as páginas http/https. A extensão não lê nem transmite o conteúdo das páginas; ela apenas insere CSS e lê a cor de fundo de alguns pontos da tela para detectar se o site já é escuro. |
+| Permissão de host (`http://*/*`, `https://*/*`) | A única função da extensão é escurecer qualquer site que o usuário abrir, por isso ela precisa inserir sua folha de estilo em todas as páginas http/https, inclusive em iframes (para manter as cores de fotos e vídeos dentro deles). A extensão não transmite nada: ela insere CSS, lê a cor de fundo de alguns pontos da tela para detectar se o site já é escuro e, quando o navegador permite, analisa localmente os pixels de algumas imagens para decidir se são fotos ou ícones. |
 
 **Código remoto (Remote code):** Não, não estou usando código remoto.
 
@@ -109,7 +112,7 @@ Nenhum login é necessário.
 1. Abra um site claro (ex.: https://pt.wikipedia.org) — ele fica escuro automaticamente.
 2. Clique no ícone da chama: o popup mostra o site atual e o status "Escuro ativo".
 3. Selecione "Nunca" para restaurar as cores originais do site; "Auto" para escurecer de novo.
-4. Mova os controles de brilho/contraste para ver a prévia ao vivo.
+4. Em "Ajustes", mova os controles (brilho, contraste, fotos) para ver a prévia ao vivo.
 5. Abra um site que já é escuro (ex.: https://github.com com tema escuro) — no modo Auto ele é mantido e o popup mostra "Site já é escuro — mantido".
 6. Atalho: Alt+Shift+D liga/desliga o site atual.
 ```

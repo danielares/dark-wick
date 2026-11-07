@@ -1,6 +1,6 @@
 # Política de Privacidade — Dark Wick
 
-_Última atualização: 30 de outubro de 2026_
+_Última atualização: 7 de novembro de 2026_
 
 A Dark Wick é uma extensão de navegador que aplica um modo escuro às páginas que você visita. Ela foi feita para funcionar inteiramente no seu dispositivo.
 
@@ -22,7 +22,7 @@ Você pode apagar todos esses dados a qualquer momento removendo a extensão do 
 
 ## Acesso ao conteúdo das páginas
 
-A extensão pede permissão para rodar em todos os sites porque o seu único propósito é escurecer qualquer página que você abrir. Nas páginas, ela apenas insere uma folha de estilo e lê a cor de fundo de alguns pontos da tela para saber se o site já é escuro. Ela não lê, guarda ou envia textos, formulários, senhas ou qualquer outro conteúdo das páginas.
+A extensão pede permissão para rodar em todos os sites porque o seu único propósito é escurecer qualquer página que você abrir. Nas páginas (inclusive dentro de iframes), ela apenas insere uma folha de estilo, lê a cor de fundo de alguns pontos da tela para saber se o site já é escuro e, quando o navegador permite, analisa no próprio dispositivo os pixels de algumas imagens para decidir se são fotos (mantêm as cores) ou ícones e diagramas (escurecem com a página). Essa análise acontece na memória, não é guardada e nada é enviado. A extensão não lê, guarda ou envia textos, formulários, senhas ou qualquer outro conteúdo das páginas.
 
 ## Alterações
 

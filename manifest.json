@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dark Wick",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Modo escuro leve para qualquer site — um único filtro na GPU, sem reescrever o CSS da página.",
   "minimum_chrome_version": "119",
   "icons": {
