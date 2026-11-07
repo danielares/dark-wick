@@ -27,7 +27,16 @@ async function syncRegistration() {
   if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: [SCRIPT_ID] });
   if (!isEnabled(all.global)) return;
 
-  const script = { id: SCRIPT_ID, js: ['src/content.js'], matches: PAGES, runAt: 'document_start' };
+  // Todos os frames (inclusive about:blank/srcdoc): fotos dentro de iframes
+  // (comentários, widgets) precisam ser revertidas pelo script do próprio frame.
+  const script = {
+    id: SCRIPT_ID,
+    js: ['src/content.js'],
+    matches: PAGES,
+    runAt: 'document_start',
+    allFrames: true,
+    matchOriginAsFallback: true,
+  };
   if (offHosts.length) script.excludeMatches = offHosts.flatMap((h) => [`*://${h}/*`, `*://www.${h}/*`]);
   await chrome.scripting.registerContentScripts([script]);
 }
@@ -38,7 +47,7 @@ async function injectInto(host) {
   await Promise.all(
     tabs
       .filter((t) => !host || hostOf(t.url) === host)
-      .map((t) => chrome.scripting.executeScript({ target: { tabId: t.id }, files: ['src/content.js'] }).catch(() => {})),
+      .map((t) => chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['src/content.js'] }).catch(() => {})),
   );
 }
 

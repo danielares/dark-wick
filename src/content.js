@@ -14,8 +14,18 @@
   window.__darkWick = alive;
   document.getElementById('dark-wick')?.remove();
 
-  const root = document.documentElement;
+  // document.open()/write() troca o <html> inteiro (e leva nosso <style> junto):
+  // root é atualizado pelo observer (ver ensureRoot).
+  let root = document.documentElement;
   if (!root || !/^(text\/(html|plain)|application\/xhtml\+xml)$/.test(document.contentType)) return;
+
+  // Iframes: o filtro do <html> da página de cima já escurece o conteúdo do
+  // iframe junto (o filtro vale para tudo que é desenhado dentro do elemento).
+  // Por isso um frame filho nunca aplica o filtro da página: só reverte as
+  // próprias mídias, e só quando o pai avisa que o iframe está sendo exibido
+  // invertido (se o pai reverteu o iframe, como um player, nada muda).
+  const isTop = window === window.top;
+  const MSG = '__darkWick';
 
   // Cópia de src/shared.js (content scripts não importam módulos).
   const DEFAULTS = { enabled: true, brightness: 100, contrast: 86, sepia: 8, grayscale: 0 };
@@ -95,12 +105,16 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   let settings = { ...DEFAULTS };
   let mode = 'auto';
   let nativeDark = false;
+  let cachedDark = false; // valor guardado em DARK_KEY
+  let inherited = false; // frame filho: o pai exibe este iframe invertido
 
-  const isActive = () => settings.enabled && mode !== 'off' && !(mode === 'auto' && nativeDark);
+  const isActive = () =>
+    isTop ? settings.enabled && mode !== 'off' && !(mode === 'auto' && nativeDark) : inherited;
 
   function render() {
+    ensureRoot();
     const active = isActive();
-    const text = active ? css(settings) : '';
+    const text = !active ? '' : isTop ? css(settings) : `@media screen{${mediaRules(settings)}}`;
     if (style.textContent !== text) style.textContent = text;
     if (!style.isConnected && document.documentElement) document.documentElement.appendChild(style);
 
@@ -112,6 +126,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     }
 
     if (active !== scanning) setScanning(active);
+    scheduleNotify();
   }
 
   async function load() {
@@ -123,7 +138,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       const site = sync[SITE_KEY] || {};
       settings = { ...DEFAULTS, ...sync.global, ...site.custom };
       mode = site.mode || 'auto';
-      nativeDark = !!local[DARK_KEY];
+      nativeDark = cachedDark = !!local[DARK_KEY];
     } catch {
       return; // extensão recarregada: este script ficou órfão
     }
@@ -177,7 +192,17 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
         if (g) return g;
       }
     }
-    return [255, 255, 255, 1]; // canvas padrão do navegador
+    return canvasColor();
+  }
+
+  // Cor do fundo da janela: a do <html> ou, se transparente, a do <body>
+  // (o navegador propaga o fundo do body para a tela toda); senão branco.
+  function canvasColor() {
+    for (const el of [root, document.body]) {
+      const bg = el && parseColor(getComputedStyle(el).backgroundColor);
+      if (bg?.[3] >= 0.5) return bg;
+    }
+    return [255, 255, 255, 1];
   }
 
   // Cor média de um gradiente (null se não houver cores legíveis).
@@ -207,7 +232,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       const bg = parseColor(getComputedStyle(el).backgroundColor);
       if (bg[3] >= 0.5) return bg;
     }
-    return [255, 255, 255, 1];
+    return canvasColor();
   }
 
   function pageLooksDark(early) {
@@ -227,7 +252,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   // early: chamado durante o carregamento. Só pode concluir "escuro" (página
   // pela metade parece clara); a volta para "claro" espera o DOMContentLoaded.
   function detect(early) {
-    if (mode !== 'auto' || !document.body) return;
+    if (!isTop || mode !== 'auto' || !document.body) return;
     // Desliga nossa folha durante a leitura para ver as cores originais.
     // É síncrono, então nada é pintado nesse intervalo.
     const sheet = style.sheet;
@@ -238,19 +263,36 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     } finally {
       if (sheet) sheet.disabled = false;
     }
+    // Cache por site: na próxima visita evitamos o "flash" claro em sites
+    // escuros. Só a leitura completa grava: tela de carregamento escura, lida
+    // no meio do carregamento, deixava o site "escuro" no cache e a extensão
+    // parava de funcionar a cada recarga.
+    if (!early && dark !== cachedDark) {
+      cachedDark = dark;
+      try {
+        dark ? chrome.storage.local.set({ [DARK_KEY]: true }) : chrome.storage.local.remove(DARK_KEY);
+      } catch {}
+    }
     if (dark === nativeDark || (early && !dark)) return;
     nativeDark = dark;
     render();
-    // Cache por site: na próxima visita evitamos o "flash" claro em sites escuros.
-    try {
-      dark ? chrome.storage.local.set({ [DARK_KEY]: true }) : chrome.storage.local.remove(DARK_KEY);
-    } catch {}
   }
 
   let detectTimer = 0;
   function scheduleDetect(delay = 0) {
     clearTimeout(detectTimer);
     detectTimer = setTimeout(detect, delay);
+  }
+
+  // Rechecagens até a página assentar: SPAs pesadas montam a tela (ou tiram a
+  // tela de carregamento) segundos depois do load. Cada uma custa alguns
+  // getComputedStyle.
+  const settleTimers = [];
+  function detectUntilSettled() {
+    if (!isTop) return;
+    settleTimers.forEach(clearTimeout);
+    settleTimers.length = 0;
+    for (const ms of [2000, 5000, 10000]) settleTimers.push(setTimeout(() => detect(), ms));
   }
 
   // ---------- varredura: fotos de fundo, cores da marca e Shadow DOM ----------
@@ -293,7 +335,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     if (eager && (r.top >= innerHeight || r.bottom <= 0)) return false;
     if (r.width >= innerWidth * 0.9 && r.height > innerHeight * 1.5) return; // fundo da página inteira
     if (el.tagName === 'IMG' || el.tagName === 'VIDEO') {
-      if (el.tagName === 'IMG') mark(el, ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX);
+      if (el.tagName === 'IMG') mark(el, ICON_MARK, r.width <= ICON_MAX && r.height <= ICON_MAX && isIcon(el, r));
       if (r.width >= COVER_MIN_W && r.height >= COVER_MIN_H) markCover(el, r);
       return;
     }
@@ -303,7 +345,12 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     const curtain = cs.position === 'fixed' && isCurtain(el);
     mark(el, KEEP_MARK, !curtain && keepsColor(cs));
     mark(el, CURTAIN_MARK, curtain && isScrim(cs));
-    if (el.hasAttribute(BG_MARK) || r.width < BG_MIN || r.height < BG_MIN) return;
+    if (el.hasAttribute(BG_MARK)) return;
+    if (r.width < BG_MIN || r.height < BG_MIN) {
+      // Avatar pequeno em background-image (foto de usuário em <span>).
+      if (r.width >= SMALL_MIN && r.height >= SMALL_MIN && isSmallPhoto(el, cs, r)) mark(el, BG_MARK, true);
+      return;
+    }
     if (isPhoto(cs, r) || isPhoto(getComputedStyle(el, '::before'), r) || isPhoto(getComputedStyle(el, '::after'), r)) {
       mark(el, BG_MARK, true);
     }
@@ -348,8 +395,10 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   }
 
   function flush() {
+    if (!writes.length) return;
     for (let i = 0; i < writes.length; i += 3) writes[i].toggleAttribute(writes[i + 1], writes[i + 2]);
     writes = [];
+    scheduleNotify(); // um iframe pode ter entrado/saído de uma área revertida
   }
 
   function keepsColor(cs) {
@@ -375,6 +424,99 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
     const w = parseFloat(cs.width) || hostRect.width;
     const h = parseFloat(cs.height) || hostRect.height;
     return w >= BG_MIN && h >= BG_MIN;
+  }
+
+  // ---------- ícone ou foto? (imagens pequenas) ----------
+  // Ícone (glifo de uma cor só) inverte junto com o texto; foto pequena
+  // (avatar, emoji, miniatura) e ícone colorido mantêm as cores originais,
+  // senão ficam em negativo. Quando o navegador deixa ler os pixels (mesma
+  // origem, data:, blob:, CORS), eles decidem; senão valem as pistas: JPEG,
+  // forma redonda (avatar) e nomes como "avatar"/"profile" no endereço/classe.
+  const SMALL_MIN = 12;
+  const PHOTO_HINT = /avatar|profile|gravatar|photo|foto|portrait|emoji|flag|thumb/i;
+  const PHOTO_EXT = /^data:image\/jpe?g|\.jpe?g([?#]|$)|[?&](fm|format)=jpe?g/i;
+  const SVG_SRC = /^data:image\/svg|\.svg([?#]|$)/i;
+  const pixelCache = new Map(); // src -> true (ícone) | false (foto) | null (ilegível)
+  let pixelCtx;
+
+  const classOf = (e) => e?.getAttribute?.('class') || '';
+
+  function isIcon(img, r) {
+    const src = img.currentSrc || img.src || '';
+    if (!src || SVG_SRC.test(src)) return true;
+    const px = pixelVerdict(img, src);
+    if (px != null) return px;
+    if (PHOTO_EXT.test(src) || isRound(img, r)) return false;
+    return !PHOTO_HINT.test(`${src} ${img.alt} ${classOf(img)}`) && !/avatar/i.test(classOf(img.parentElement));
+  }
+
+  // Avatar em background-image: foto pequena que não é sprite nem textura.
+  function isSmallPhoto(el, cs, r) {
+    const m = /url\(["']?([^"')]+)/.exec(cs.backgroundImage);
+    if (!m || SVG_SRC.test(m[1])) return false;
+    if (cs.backgroundSize === 'auto' && cs.backgroundRepeat !== 'no-repeat') return false; // textura
+    // Sprite (vários ícones numa imagem, deslocada com background-position).
+    if (cs.backgroundPosition.split(/[\s,]+/).some((v) => v.endsWith('px') && parseFloat(v) !== 0)) return false;
+    return PHOTO_EXT.test(m[1]) || PHOTO_HINT.test(`${m[1]} ${classOf(el)}`) || isRound(el, r);
+  }
+
+  // Ele ou um ancestral do mesmo tamanho (moldura que recorta) é redondo.
+  function isRound(el, r) {
+    for (let e = el, i = 0; e && e !== document.body && i < 3; e = e.parentElement, i++) {
+      const q = i ? e.getBoundingClientRect() : r;
+      if (q.width > r.width + 8 || q.height > r.height + 8) break;
+      const rad = getComputedStyle(e).borderTopLeftRadius;
+      const v = parseFloat(rad);
+      if (rad.endsWith('%') ? v >= 30 : v >= Math.min(q.width, q.height) * 0.3) return true;
+    }
+    return false;
+  }
+
+  function pixelVerdict(img, src) {
+    if (pixelCache.has(src)) return pixelCache.get(src);
+    let readable = /^(data|blob):/.test(src) || img.crossOrigin != null;
+    try {
+      readable ||= new URL(src, location.href).origin === location.origin;
+    } catch {}
+    if (!readable) return null;
+    if (!img.complete || !img.naturalWidth) {
+      img.addEventListener('load', () => queue([img]), { once: true });
+      return null;
+    }
+    let v = null;
+    try {
+      v = classifyPixels(img);
+    } catch {} // canvas contaminado (redirecionamento para outra origem etc.)
+    pixelCache.set(src, v);
+    return v;
+  }
+
+  function classifyPixels(img) {
+    const w = Math.min(img.naturalWidth, 32);
+    const h = Math.min(img.naturalHeight, 32);
+    pixelCtx ??= new OffscreenCanvas(32, 32).getContext('2d', { willReadFrequently: true });
+    pixelCtx.clearRect(0, 0, 32, 32);
+    pixelCtx.drawImage(img, 0, 0, w, h);
+    const d = pixelCtx.getImageData(0, 0, w, h).data;
+    const px = [];
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] >= 128) px.push(i);
+    const total = w * h;
+    if (px.length < total * 0.02) return true;
+    const mean = [0, 1, 2].map((c) => px.reduce((s, i) => s + d[i + c], 0) / px.length);
+    let spread = 0;
+    let chroma = 0;
+    const bins = new Array(8).fill(0);
+    for (const i of px) {
+      const [r, g, b] = [d[i], d[i + 1], d[i + 2]];
+      spread += Math.abs(r - mean[0]) + Math.abs(g - mean[1]) + Math.abs(b - mean[2]);
+      chroma += Math.max(r, g, b) - Math.min(r, g, b);
+      bins[Math.min(7, (luma([r, g, b]) * 8) | 0)]++;
+    }
+    if (spread / px.length / 765 < 0.06) return true; // uma cor só: glifo
+    if (chroma / px.length / 255 > 0.18) return false; // colorido: emoji, avatar, logo
+    // Cinza: glifo tem poucos tons; foto P&B opaca tem muitos.
+    const levels = bins.filter((n) => n >= px.length * 0.04).length;
+    return !(px.length > total * 0.95 && levels >= 5);
   }
 
   function adoptShadow(sr) {
@@ -457,7 +599,7 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
   // Também religa nosso <style> se um framework que hidrata o <html> removê-lo.
   const observer = new MutationObserver((mutations) => {
     if (!alive() || window.__darkWick !== alive) return observer.disconnect();
-    if (!style.isConnected) render();
+    if (!style.isConnected || document.documentElement !== root) render();
     if (!scanning) return;
     const eager = !document.hidden && (document.readyState !== 'complete' || performance.now() < eagerUntil);
     for (const m of mutations) {
@@ -479,11 +621,98 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
 
   const rescan = () => scanning && enqueue(root); // pega elementos que só ganharam tamanho/shadow depois
 
+  // O <html> foi trocado (document.open/write): passa a observar o novo.
+  function ensureRoot() {
+    const el = document.documentElement;
+    if (!el || el === root) return;
+    root = el;
+    observer.observe(root, { childList: true, subtree: scanning });
+    if (scanning) enqueue(root);
+  }
+
+  // ---------- iframes ----------
+  // Cada frame avisa os iframes filhos (postMessage, funciona entre origens)
+  // se eles aparecem invertidos: conta quantos filtros invert() há entre o
+  // iframe e a raiz (página, mídias e fundos revertidos, filtros do próprio
+  // site). Ímpar = invertido, e o filho reverte suas fotos e vídeos.
+  const sentState = new WeakMap(); // contentWindow -> último estado enviado
+  const TOP_LAYER = ':modal,:popover-open,:fullscreen';
+  let notifyTimer = 0;
+
+  function scheduleNotify() {
+    if (!notifyTimer) notifyTimer = setTimeout(notifyFrames, 100);
+  }
+
+  function frameElements() {
+    const list = [...document.querySelectorAll('iframe,frame')];
+    for (const ref of shadowStyles) {
+      const sr = ref.deref()?.parentNode;
+      if (sr) list.push(...sr.querySelectorAll('iframe'));
+    }
+    return list;
+  }
+
+  function notifyFrames() {
+    notifyTimer = 0;
+    for (const f of frameElements()) sendState(f, false);
+  }
+
+  function sendState(frame, force) {
+    const win = frame.contentWindow;
+    if (!win) return;
+    const on = displaysInverted(frame);
+    const key = on ? `on:${settings.contrast}` : 'off';
+    if (!force && sentState.get(win) === key) return;
+    sentState.set(win, key);
+    try {
+      win.postMessage({ [MSG]: 'state', on, contrast: settings.contrast }, '*');
+    } catch {}
+  }
+
+  const invertCount = (filter) => {
+    let n = 0;
+    for (const m of filter.matchAll(/invert\(([\d.]+)(%?)\)/g)) if (parseFloat(m[1]) / (m[2] ? 100 : 1) >= 0.5) n++;
+    return n;
+  };
+
+  function displaysInverted(el) {
+    let odd = !isTop && inherited;
+    for (let e = el; e; e = e.parentElement || e.getRootNode().host) {
+      if (invertCount(getComputedStyle(e).filter) % 2) odd = !odd;
+      // A top layer (modal, tela cheia) não fica sob o filtro dos ancestrais.
+      try {
+        if (e.matches(TOP_LAYER)) break;
+      } catch {}
+    }
+    return odd;
+  }
+
+  addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || typeof d !== 'object' || !(MSG in d)) return;
+    e.stopImmediatePropagation(); // mensagem nossa: não é da página
+    if (!alive() || window.__darkWick !== alive) return;
+    if (d[MSG] === 'hello') {
+      const f = frameElements().find((x) => x.contentWindow === e.source);
+      if (f) sendState(f, true);
+    } else if (d[MSG] === 'state' && !isTop && e.source === window.parent) {
+      inherited = !!d.on;
+      if (typeof d.contrast === 'number') settings = { ...settings, contrast: d.contrast };
+      render();
+    }
+  }, true);
+
   // ---------- inicialização ----------
 
   observer.observe(root, { childList: true });
+  observer.observe(document, { childList: true });
   render(); // otimista: aplica já no document_start, antes do primeiro paint
-  load();
+  if (isTop) load();
+  else {
+    try {
+      window.parent.postMessage({ [MSG]: 'hello' }, '*');
+    } catch {}
+  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
@@ -496,12 +725,26 @@ dialog:modal:not(:fullscreen),[popover]:popover-open:not(:fullscreen){filter:${f
       eagerFor(3000); // conteúdo inserido por scripts logo após o load
       scheduleDetect();
       rescan();
-      setTimeout(() => (scheduleDetect(), rescan()), 2000);
+      setTimeout(rescan, 2000);
+      detectUntilSettled();
     }, { once: true });
   } else {
-    setTimeout(() => (scheduleDetect(), rescan()), 2000);
+    setTimeout(rescan, 2000);
+    detectUntilSettled();
   }
-  window.navigation?.addEventListener('navigatesuccess', () => (eagerFor(3000), scheduleDetect(800)));
+  window.navigation?.addEventListener('navigatesuccess', () => (eagerFor(3000), scheduleDetect(800), detectUntilSettled()));
+  // Volta para a aba: confere se o <style> continua lá e se o tema mudou.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !alive()) return;
+    render();
+    scheduleDetect(300);
+  });
+
+  if (!isTop) return;
+
+  // Voltando do bfcache: as preferências podem ter mudado enquanto a página
+  // estava congelada.
+  addEventListener('pageshow', (e) => e.persisted && load());
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && ('global' in changes || SITE_KEY in changes)) load();
